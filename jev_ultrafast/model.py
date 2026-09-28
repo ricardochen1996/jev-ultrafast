@@ -12,12 +12,40 @@ from .questions import NEXT_ACTION, TARGET, TEXT_VALUE
 CLIENT = httpx.Client(http2=True, timeout=25)
 
 
-def post_json(url, key, body):
+class NoTextValue(ValueError):
+    """The text helper returned nothing usable, so no text was typed."""
+
+
+def env_headers(name):
+    """Optional JSON object of extra request headers, for gateways that require one."""
+    raw = os.environ.get(name)
+    if not raw:
+        return None
+    try:
+        headers = json.loads(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be a JSON object of header names to values.") from None
+    if not isinstance(headers, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in headers.items()):
+        raise ValueError(f"{name} must be a JSON object of header names to values.")
+    return headers
+
+
+def post_json(url, key, body, headers=None):
+    request_headers = dict(headers or {})
+    if key:
+        request_headers["Authorization"] = f"Bearer {key}"
     for attempt in range(3):
         try:
-            response = CLIENT.post(url, json=body, headers={"Authorization": f"Bearer {key}"})
-        except httpx.HTTPError:
-            raise RuntimeError("Model connection failed; no action executed.") from None
+            response = CLIENT.post(url, json=body, headers=request_headers)
+        except httpx.HTTPError as error:
+            # A decision or a field value is not a browser mutation, so a dropped connection can
+            # be retried; no action is executed until this returns.
+            if attempt < 2:
+                time.sleep(0.4 * 2**attempt)
+                continue
+            raise RuntimeError(
+                f"Model connection failed ({type(error).__name__}); no action executed."
+            ) from None
         if response.status_code in {429, 529, 503} and attempt < 2:
             time.sleep(0.5 * 2**attempt)
             continue
@@ -45,6 +73,29 @@ def validate_choice(answer, ids):
     return answer
 
 
+def noop_repeats(history):
+    """Targets that already ran against the same element and left the page unchanged.
+
+    A model can keep choosing an action the page ignores, and each repeat costs a step. The
+    answer already ranks every candidate, so the next-best ranking breaks the loop without
+    another request.
+    """
+    repeats = set()
+    for entry in history[-4:]:
+        if entry.get("page_changed") is not False:
+            continue
+        operation, target = entry.get("operation"), entry.get("target")
+        if operation in {"CLICK", "TYPE_TEXT", "SELECT"} and target is not None:
+            repeats.add((operation, str(target)))
+    return repeats
+
+
+def ranked(probabilities, operation, repeats):
+    """Candidate indices by probability, and those dropped for having just done nothing."""
+    order = sorted(probabilities, key=lambda index: -probabilities[index])
+    return order, [index for index in order if (operation, str(index)) in repeats]
+
+
 def action_space(actions):
     """One index per observed element; each operation has its own valid target choices."""
     elements, indices, targets, controls = [], {}, {}, {}
@@ -58,7 +109,8 @@ def action_space(actions):
         if node not in indices:
             index = str(len(elements) + 1)
             indices[node] = index
-            element = {k: action[k] for k in ("role", "value", "checked", "selected", "expanded") if k in action}
+            keys = ("role", "value", "checked", "selected", "expanded", "nearby")
+            element = {k: action[k] for k in keys if k in action}
             element.update(index=index, label=action["label"].split(" → ")[0], operations=[])
             if kind == "select":
                 element["value"] = action.get("current_value", "")
@@ -98,7 +150,7 @@ def choose(state, goal, history):
                 index: {
                     "element": f"[{index}] {a['label']}",
                     "current_value": a.get("current_value", a.get("value", "")),
-                    **{k: a[k] for k in ("role", "checked", "selected", "expanded") if k in a},
+                    **{k: a[k] for k in ("role", "checked", "selected", "expanded", "nearby") if k in a},
                 }
                 for index, a in candidates.items()
             },
@@ -110,24 +162,49 @@ def choose(state, goal, history):
             "page": {k: state[k] for k in ("url", "title", "text")},
             "elements": elements,
             "recent_actions": [
-                {k: h.get(k) for k in ("action", "kind", "text", "page_changed")} for h in history[-10:]
+                {k: h.get(k) for k in ("action", "kind", "text", "page_changed", "operation", "target")}
+                for h in history[-10:]
             ],
         },
         "questions": questions,
     }
     started = time.perf_counter()
-    result = post_json("https://api.typesafe.ai/v1/systemone", os.environ["TYPESAFE_API_KEY"], body)
+    endpoint = os.environ.get("TYPESAFE_BASE_URL", "https://api.typesafe.ai/v1/systemone")
+    result = post_json(endpoint, os.environ.get("TYPESAFE_API_KEY", ""), body)
     operation_answer = validate_choice(result["answers"].get("operation", {}), operations)
     operation = operation_answer["choice"]
     target = None
     target_answer = None
     probabilities = {}
-    if operation in targets:
-        # Unused target heads cannot cause an action. Validate the head selected by the operation.
-        target_answer = validate_choice(result["answers"].get(operation.lower() + "_target", {}), targets[operation])
-        target = target_answer["choice"]
+    repeats = noop_repeats(history)
+    skipped = []
+
+    def fresh_head(name):
+        """One operation's validated target head, its best candidate that has not just failed, and what it avoided."""
+        candidates = targets.get(name)
+        if not candidates:
+            return None, None, []
+        answer = validate_choice(result["answers"].get(name.lower() + "_target", {}), candidates)
+        order, dropped = ranked(answer["probabilities"], name, repeats)
+        viable = [index for index in order if (name, str(index)) not in repeats]
+        return answer, (viable[0] if viable else None), dropped
+
+    target_answer, best, dropped = fresh_head(operation)
+    if target_answer is not None and best is None:
+        # Every candidate of the model's operation already did nothing: take the next-best
+        # operation that still has a candidate worth trying, from the same answer.
+        for name in sorted(operation_answer["probabilities"], key=lambda key: -operation_answer["probabilities"][key]):
+            if name == operation or name not in targets:
+                continue
+            answer, alternative, alternative_dropped = fresh_head(name)
+            if alternative is not None:
+                operation, target_answer, best, dropped = name, answer, alternative, alternative_dropped
+                break
+    if target_answer is not None:
+        target = best if best is not None else target_answer["choice"]
         choice = targets[operation][target]["id"]
         probabilities = {a["id"]: target_answer["probabilities"][index] for index, a in targets[operation].items()}
+        skipped = dropped if target != target_answer["choice"] else []
     else:
         choice = controls[operation]["id"] if operation in controls else operation
         probabilities[choice] = operation_answer["probabilities"][operation]
@@ -145,13 +222,14 @@ def choose(state, goal, history):
         "usage": result.get("usage", {}),
         "latency_ms": round((time.perf_counter() - started) * 1000),
         "request": body,
+        "skipped_noops": skipped,
     }
 
 
 def field_context(goal, action, page, history):
     return {
         "goal": goal,
-        "field": {k: action.get(k) for k in ("label", "role", "value")},
+        "field": {k: action.get(k) for k in ("label", "role", "value", "nearby")},
         "page": {"title": page["title"], "text": page["text"][:6000]},
         "recent_actions": [{k: h.get(k) for k in ("action", "text")} for h in history[-6:]],
     }
@@ -164,8 +242,11 @@ def field_text(context):
     base = os.environ.get("TEXT_MODEL_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
     model = os.environ.get("TEXT_MODEL", "deepseek-chat")
     reasoning = {"thinking": {"type": "disabled"}} if "api.deepseek.com/" in base else {"reasoning": {"effort": "low"}}
-    if os.environ.get("TEXT_MODEL_REASONING") == "none":
+    mode = os.environ.get("TEXT_MODEL_REASONING")
+    if mode == "none":
         reasoning = {"reasoning": {"enabled": False}}
+    elif mode == "thinking-disabled":
+        reasoning = {"thinking": {"type": "disabled"}}
     started = time.perf_counter()
     result = post_json(
         base + "/chat/completions",
@@ -183,6 +264,7 @@ def field_text(context):
                 },
             ],
         },
+        env_headers("TEXT_MODEL_HEADERS"),
     )
     try:
         output = json.loads(result["choices"][0]["message"]["content"])
@@ -190,7 +272,7 @@ def field_text(context):
         if set(output) != {"text"} or not isinstance(value, str) or not value.strip() or len(value) > 2000:
             raise ValueError()
     except (ValueError, KeyError, TypeError):
-        raise ValueError("Text helper returned no valid field value; nothing typed.") from None
+        raise NoTextValue("Text helper returned no valid field value; nothing typed.") from None
     return value, {
         "model": model,
         "latency_ms": round((time.perf_counter() - started) * 1000),

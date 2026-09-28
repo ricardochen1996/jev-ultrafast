@@ -4,10 +4,12 @@ let state = null,
   busy = false,
   automatic = false;
 const goals = {
-  flights: 'Find one-way flights from Zurich to London on September 20, 2026, for one adult in economy. Stop when matching flight options are visible. Do not select or book a flight.',
-  travel: 'Find a Design stay in Lisbon with Free cancellation and open Casa Flora.',
+  flights:
+    "Find one-way flights from Zurich to London on September 20, 2026, for one adult in economy. Stop when matching flight options are visible. Do not select or book a flight.",
+  travel: "Find a Design stay in Lisbon with Free cancellation and open Casa Flora.",
   research:
     "Open the article about using finite choices to control browser agents.",
+  custom: "Describe the task for this page, and what should be visible when it is done.",
 };
 const escape = (value) =>
   String(value ?? "").replace(
@@ -35,6 +37,8 @@ function controls() {
   $("start").disabled = busy;
   $("scenario").disabled = busy;
   $("goal").disabled = busy;
+  $("target-url").disabled = busy;
+  $("reuse").disabled = busy;
   $("choose").disabled = busy || !live;
   $("execute").disabled = busy || !state?.decision || !live;
   $("auto").disabled = busy || !live;
@@ -46,6 +50,7 @@ async function perform(fn, label) {
   if (busy) return;
   busy = true;
   $("error").hidden = true;
+  $("error").classList.remove("notice");
   controls();
   $("status").textContent = label;
   try {
@@ -58,6 +63,7 @@ async function perform(fn, label) {
     } catch {
       /* Preserve the original failure if the server disconnected. */
     }
+    $("error").classList.remove("notice");
     $("error").textContent = error.message;
     $("error").hidden = false;
     $("status").textContent = "Paused · needs attention";
@@ -68,6 +74,14 @@ async function perform(fn, label) {
 }
 function render() {
   if (!state) return;
+  if (state.notice) {
+    $("error").textContent = state.notice;
+    $("error").classList.add("notice");
+    $("error").hidden = false;
+  }
+  // Target boxes are placed in percentages of the observed viewport, so the frame has to match
+  // that viewport instead of one fixed size: a reused tab keeps the user's own window size.
+  if (state.page?.w && state.page?.h) $("viewport").style.aspectRatio = `${state.page.w} / ${state.page.h}`;
   $("helper").textContent = `Text helper · ${state.text_model}`;
   $("plan").innerHTML = (state.plan || [])
     .map(
@@ -150,13 +164,22 @@ $("task-form").addEventListener("submit", (event) => {
   automatic = false;
   perform(
     () =>
-      call("reset", { scenario: $("scenario").value, goal: $("goal").value }),
+      call("reset", {
+        scenario: $("scenario").value,
+        goal: $("goal").value,
+        url: $("target-url").value,
+        reuse: $("reuse").checked,
+      }),
     "Opening a fresh browser…",
   );
 });
-$("scenario").addEventListener("change", () => {
-  $("goal").value = goals[$("scenario").value];
-});
+function selectScenario() {
+  const custom = $("scenario").value === "custom";
+  $("url-row").hidden = !custom;
+  $("goal").value = goals[$("scenario").value] ?? "";
+  if (custom) $("target-url").focus();
+}
+$("scenario").addEventListener("change", selectScenario);
 $("choose").addEventListener("click", () =>
   perform(() => call("predict"), "Jev is comparing the actions…"),
 );

@@ -563,6 +563,11 @@ footer {
   font-size: 13px;
   color: #924c2b;
 }
+#error.notice {
+  background: #eef6f1;
+  border-color: #c6e0d2;
+  color: #2f6b4f;
+}
 @media (min-width: 1500px) {
   .workspace {
     grid-template-columns: minmax(0, 1fr) 360px;

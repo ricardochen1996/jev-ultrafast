@@ -6,17 +6,17 @@ from pathlib import Path
 
 from .browser import Browser, StalePage
 from .model import action_space, choose, field_context, field_text
-from .questions import MAX_STEPS
+from .questions import MAX_STEPS, PROBE_SCROLLS
 
 
 class Agent:
-    def __init__(self, url, goals, *, record_dir=None, screenshots=False):
+    def __init__(self, url, goals, *, record_dir=None, screenshots=False, reuse=False):
         task = goals.strip() if isinstance(goals, str) else "\n".join(goals).strip()
         if not task:
             raise ValueError("Supply a task")
         plan = [task]
         self.pending_text = None
-        self.browser = Browser(url)
+        self.browser = Browser(url, reuse=reuse)
         self.record_dir = Path(record_dir) if record_dir else None
         self.screenshots = screenshots or bool(record_dir)
         try:
@@ -38,6 +38,8 @@ class Agent:
             elapsed_ms=0,
             started_at=None,
             record=bool(self.record_dir),
+            probe_scrolls=0,
+            blocked_dones=0,
         )
         if self.record_dir:
             self.record_dir.mkdir(parents=True, exist_ok=True)
@@ -48,6 +50,15 @@ class Agent:
             **{k: v for k, v in self.state.items() if k != "browser"},
             "elements": action_space(self.state["page"]["actions"])[0],
         }
+
+    def refresh(self):
+        """Re-observe after a decision went stale. Nothing was executed, so the run stays ready."""
+        state = self.state
+        state["decision"] = None
+        state["status"] = "ready"
+        state["page"] = self.browser.observe(screenshot=self.screenshots)
+        if state["started_at"] is not None:
+            state["elapsed_ms"] = round((time.perf_counter() - state["started_at"]) * 1000)
 
     def command(self, name, body=None):
         body = body or {}
@@ -94,6 +105,55 @@ class Agent:
                 if not state["browser"].fresh(page):
                     state["status"] = "ready"
                     raise StalePage("Page changed since the decision. Choose again.")
+                if selected == "DONE" and state["browser"].blocking_dialog():
+                    if state["blocked_dones"] < 2:
+                        # A dialog on screen means the page has something left to say. Reporting
+                        # success over it would claim an outcome nobody has seen.
+                        state["blocked_dones"] += 1
+                        state["status"] = "ready"
+                        raise StalePage("The page is still showing a dialog. Choose again.")
+                    # The choice insists while the page still reports a problem: that is a block, not
+                    # a finished goal, and saying otherwise would be a false success.
+                    state["status"] = "blocked"
+                    state["elapsed_ms"] = round((time.perf_counter() - state["started_at"]) * 1000)
+                    return self.snapshot()
+                if selected == "BLOCKED" and state["browser"].wait_for_change():
+                    # A page that is still loading is not evidence that nothing can progress: look
+                    # again instead of stopping on a half-rendered screen.
+                    state["status"] = "ready"
+                    raise StalePage("The page was still moving when the block was reported. Choose again.")
+                below = next((a for a in page["actions"] if a["kind"] == "scroll" and a["delta"] > 0), None)
+                if selected == "BLOCKED" and below is not None and state["probe_scrolls"] < PROBE_SCROLLS:
+                    # An unexplored page is not a blocked one. Scroll on and look again, bounded, so a
+                    # goal that names a control below the fold is not reported as impossible.
+                    state["probe_scrolls"] += 1
+                    state["browser"].act(below, page)
+                    state["browser"].settle("scroll")
+                    state["history"].append(
+                        {
+                            "step": len(state["history"]) + 1,
+                            "action": below["label"],
+                            "kind": "scroll",
+                            "choice": below["id"],
+                            "probability": 0.0,
+                            "confidence": 0.0,
+                            "latency_ms": 0,
+                            "text": None,
+                            "text_helper": None,
+                            "text_latency_ms": 0,
+                            "operation": "SCROLL_DOWN",
+                            "target": None,
+                            "page_changed": None,
+                            "via": None,
+                            "url": page["url"],
+                            "usage": {},
+                            "executed_ms": round((time.perf_counter() - state["started_at"]) * 1000),
+                            "elapsed_ms": round((time.perf_counter() - state["started_at"]) * 1000),
+                        }
+                    )
+                    state["page"] = state["browser"].observe(screenshot=self.screenshots)
+                    state["status"] = "ready"
+                    return self.snapshot()
                 state["status"] = "done" if selected == "DONE" else "blocked"
                 state["plan_index"] = int(selected == "DONE")
                 state["elapsed_ms"] = round((time.perf_counter() - state["started_at"]) * 1000)
@@ -114,7 +174,9 @@ class Agent:
                     self.pending_text = (context, text, helper)
                     state["text_calls"].append({**helper, "field": action["label"], "value": text})
             # Browser.act checks freshness immediately before input, including after text generation.
-            state["browser"].act(action, page, text=text)
+            executed = state["browser"].act(action, page, text=text)
+            # Let an asynchronous page show the effect before the next observation judges it.
+            state["browser"].settle(action["kind"])
             self.pending_text = None
             state["elapsed_ms"] = round((time.perf_counter() - state["started_at"]) * 1000)
             # Record execution before observing. A stale post-action observation must not erase the action.
@@ -133,6 +195,7 @@ class Agent:
                     "operation": decision["operation"],
                     "target": decision["target"],
                     "page_changed": None,
+                    "via": (executed or {}).get("via"),
                     "url": page["url"],
                     "usage": decision["usage"],
                     "executed_ms": round((time.perf_counter() - state["started_at"]) * 1000),
