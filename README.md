@@ -61,9 +61,9 @@ cp .env.example .env
 uv run jev
 ```
 
-Open **http://127.0.0.1:8766** and click **Start demo → Run automatically**. The inspector shows numbered elements, operation probabilities, target probabilities, and executed actions. **Choose next** pauses before execution.
+Open **http://127.0.0.1:8766** and click **Start demo → Run automatically**. The inspector shows numbered elements, operation probabilities, target probabilities, and executed actions. **Choose next** pauses before execution. Pick **Custom page · any URL** to run the same policy against any http(s) page, and leave **Use my open tab** checked to drive a tab you already have open instead of creating one.
 
-Chrome connects through [Browser Harness](https://github.com/browser-use/browser-harness), installed by `uv sync`. Run `uv run browser-harness --doctor` if it needs connecting. Allow remote debugging in Chrome when prompted.
+`TYPESAFE_BASE_URL` accepts any endpoint that speaks the System One protocol, so the hosted API is a default rather than a requirement: OpenCode's gateway serves the same request and response shape at `https://opencode.ai/zen/v1/systemone`. Chrome connects through [Browser Harness](https://github.com/browser-use/browser-harness), installed by `uv sync`. Run `uv run browser-harness --doctor` if it needs connecting. Allow remote debugging in Chrome when prompted.
 
 `TEXT_MODEL_API_KEY` is an OpenRouter key in the example configuration. The current demo uses `inception/mercury-2.5` with reasoning disabled. Gemini, GLM, and DeepSeek can also use the OpenAI-compatible text helper; configure the appropriate model, endpoint, and reasoning setting.
 
@@ -101,6 +101,19 @@ uv run --env-file .env python examples/run.py \
 - **Keep hidden tabs rendering.** Focus emulation prevents background animation throttling without switching Chrome's visible tab.
 - **Send visible text.** Offscreen article bodies and footers do not fill the model context.
 - **Reuse an interrupted text request.** A generated value survives a stale-page retry only if the entire text-helper input is unchanged.
+- **Let the page finish.** After a click, typing, or a select, the loop reads the page until it stops changing, so an asynchronous render is not mistaken for a no-op.
+- **Never repeat an action that just did nothing.** When the selected target already ran against the same element without moving the page, the next-best candidate from that same answer is used. The choice comes from the response already paid for, so the cycle still costs one request.
+- **Explore before giving up.** `BLOCKED` is not accepted while the page is still moving, and if content remains below the fold the loop scrolls once and looks again. Scrolling follows the panel under the viewport centre, not only the window.
+
+## Reaching the controls
+
+Some interfaces put real controls where pointer input cannot land. The snapshot offers them anyway, and the executor handles each case from the observed node:
+
+- **Clipped actions.** A control inside a container with `overflow: hidden` — an overflow menu, a pinned action column — is offered as its own target instead of only behind a trigger. A popup that a synthetic click cannot open no longer hides the actions it holds.
+- **Custom selects.** A focusable box that names itself a picker is treated as a trigger, not a text field. Clicking aims at the free space after any chips, which is where a person clicks, and once the popup is open its option rows are offered as targets.
+- **Dialogs.** While a modal is on screen, `DONE` is refused: the page still has something to say. If the choice insists, the run reports `BLOCKED` rather than a success nobody has seen.
+
+Only actions the snapshot itself marked as clipped may be activated through their own node. Everything else keeps the ordinary path: resolve current geometry, hit-test the point, and reject a covered control before input. Model output still never becomes selectors, coordinates, or code.
 
 Every executed target is resolved from an observed node. The executor rechecks page freshness and click occlusion. Model output never becomes selectors, coordinates, shell commands, or executable JavaScript. Text-helper output must parse as a small JSON object before typing.
 
@@ -123,7 +136,9 @@ In six alternating runs with identical models and settings, both versions passed
 
 The same policy opened the requested Wikipedia article in **2.798 s** and passed a local hotel search/filter task in **1.896 s**. Runs, failures, source hashes, and measurement boundaries are in [performance.md](docs/performance.md).
 
-A `DONE` choice still requires independent outcome verification. The DOM reader handles common HTML and ARIA controls, not the full accessible-name specification. Shadow roots, frames, canvas, uploads, pop-up tabs, nested scrolling, and arbitrary keyboard widgets remain outside this MVP. Owned tabs share the existing Chrome profile.
+A `DONE` choice still requires independent outcome verification. A modal dialog on screen is treated as unfinished work rather than success. The DOM reader handles common HTML and ARIA controls, not the full accessible-name specification. Shadow roots, frames, canvas, uploads, pop-up tabs, and arbitrary keyboard widgets remain outside this MVP; nested scrolling is handled only for the panel under the viewport centre. Owned tabs share the existing Chrome profile.
+
+Timings and request counts above were measured on the upstream build at commit `1231850`. The reachability and settling work described here runs after this fork's actions, so re-measure with `uv run python examples/flights.py` before quoting them.
 
 ## Development
 
