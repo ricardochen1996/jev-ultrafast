@@ -401,10 +401,10 @@ def test_run_records_can_be_deleted_and_replayed_from_their_first_page(tmp_path,
     assert summary["start_url"] == "https://example.com/"
     assert summary["plan"] == ["a", "b"]
 
-    monkeypatch.setitem(demo.RUN, "record", {"id": legacy["id"]})
-    assert demo.command(f"runs/{legacy['id']}/delete", {}) == {"deleted": legacy["id"]}
+    monkeypatch.setitem(demo.RUN, "record", {"id": "another"})
+    assert demo.command(f"runs/{legacy['id']}/delete", {}) == {"deleted": legacy["id"], "cleared": False}
     assert not list(tmp_path.iterdir())
-    assert demo.RUN["record"] is None
+    assert demo.RUN["record"] == {"id": "another"}
     with pytest.raises(ValueError):
         demo.command("runs/../x/delete", {})
 
@@ -503,3 +503,17 @@ def test_a_page_that_keeps_looping_stops_instead_of_spending_the_budget(runner, 
         runner.command("predict")
     chosen.assert_not_called()
     assert state["status"] == "blocked"
+
+
+def test_deleting_the_run_on_screen_ends_it(tmp_path, monkeypatch):
+    from jev_ultrafast import demo
+
+    monkeypatch.setattr(demo, "RUNS", tmp_path)
+    (tmp_path / "r2.json").write_text("{}")
+    fake = Mock()
+    monkeypatch.setattr(demo, "AGENT", fake)
+    monkeypatch.setitem(demo.RUN, "record", {"id": "r2"})
+    assert demo.command("runs/r2/delete", {}) == {"deleted": "r2", "cleared": True}
+    fake.close.assert_called_once()
+    assert demo.AGENT is None and not demo.RUN
+    assert demo.response_state()["page"] is None
