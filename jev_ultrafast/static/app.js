@@ -2,14 +2,28 @@ const $ = (id) => document.getElementById(id);
 const token = document.querySelector('meta[name="demo-token"]').content;
 let state = null,
   busy = false,
-  automatic = false;
-const goals = {
-  flights:
-    "Find one-way flights from Zurich to London on September 20, 2026, for one adult in economy. Stop when matching flight options are visible. Do not select or book a flight.",
-  travel: "Find a Design stay in Lisbon with Free cancellation and open Casa Flora.",
-  research:
-    "Open the article about using finite choices to control browser agents.",
-  custom: "Describe the task for this page, and what should be visible when it is done.",
+  automatic = false,
+  shownRun = null,
+  listedRun = null;
+// The page and the goal are the two things a tester retypes every time; keep them across visits.
+const STORE = { url: "jev.url", goal: "jev.goal", reuse: "jev.reuse" };
+const remember = () => {
+  try {
+    localStorage.setItem(STORE.url, $("target-url").value);
+    localStorage.setItem(STORE.goal, $("goal").value);
+    localStorage.setItem(STORE.reuse, $("reuse").checked ? "1" : "0");
+  } catch {
+    /* Private mode still runs the page; it just forgets. */
+  }
+};
+const recall = () => {
+  try {
+    $("target-url").value = localStorage.getItem(STORE.url) || "";
+    $("goal").value = localStorage.getItem(STORE.goal) || "";
+    $("reuse").checked = localStorage.getItem(STORE.reuse) !== "0";
+  } catch {
+    /* Nothing remembered yet. */
+  }
 };
 const escape = (value) =>
   String(value ?? "").replace(
@@ -35,7 +49,6 @@ async function call(name, body = {}) {
 function controls() {
   const live = state?.page && !["done", "blocked"].includes(state.status);
   $("start").disabled = busy;
-  $("scenario").disabled = busy;
   $("goal").disabled = busy;
   $("target-url").disabled = busy;
   $("reuse").disabled = busy;
@@ -45,6 +58,7 @@ function controls() {
   $("auto").hidden = automatic;
   $("stop").hidden = !automatic;
   $("download").disabled = !state?.history?.length;
+  $("runs-refresh").disabled = busy;
 }
 async function perform(fn, label) {
   if (busy) return;
@@ -101,6 +115,12 @@ function render() {
     blocked: "Stopped · no supported next action",
   };
   $("status").textContent = labels[state.status] || state.status;
+  if (state.run_id && state.run_id !== shownRun) {
+    shownRun = state.run_id;
+  } else if (["done", "blocked"].includes(state.status) && state.run_id !== listedRun) {
+    listedRun = state.run_id;
+    loadRuns();
+  }
   if (!page) {
     controls();
     return;
@@ -162,24 +182,26 @@ function render() {
 $("task-form").addEventListener("submit", (event) => {
   event.preventDefault();
   automatic = false;
+  const url = $("target-url").value.trim();
+  if (!/^https?:\/\//i.test(url)) {
+    $("error").classList.remove("notice");
+    $("error").textContent =
+      "Enter a full http or https page address, for example https://example.com";
+    $("error").hidden = false;
+    $("target-url").focus();
+    return;
+  }
+  remember();
   perform(
     () =>
       call("reset", {
-        scenario: $("scenario").value,
         goal: $("goal").value,
-        url: $("target-url").value,
+        url,
         reuse: $("reuse").checked,
       }),
-    "Opening a fresh browser…",
-  );
+    "Opening the page…",
+  ).then(loadRuns);
 });
-function selectScenario() {
-  const custom = $("scenario").value === "custom";
-  $("url-row").hidden = !custom;
-  $("goal").value = goals[$("scenario").value] ?? "";
-  if (custom) $("target-url").focus();
-}
-$("scenario").addEventListener("change", selectScenario);
 $("choose").addEventListener("click", () =>
   perform(() => call("predict"), "Jev is comparing the actions…"),
 );
@@ -237,6 +259,32 @@ $("choices").addEventListener("pointerleave", () =>
       ),
     ),
 );
+$("runs-list").addEventListener("click", (event) => {
+  const id = event.target.closest("[data-run]")?.dataset.run;
+  if (id) showRun(id);
+});
+$("runs-refresh").addEventListener("click", loadRuns);
+["run-close", "run-close-button"].forEach((id) =>
+  $(id).addEventListener("click", closeRun),
+);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !$("run-detail").hidden) closeRun();
+});
+$("run-export").addEventListener("click", () => {
+  if (!openRunRecord) return;
+  const blob = new Blob([JSON.stringify(openRunRecord, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `jev-run-${openRunRecord.id}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+$("target-url").addEventListener("change", remember);
+$("goal").addEventListener("change", remember);
+$("reuse").addEventListener("change", remember);
 $("download").addEventListener("click", () => {
   const { page, ...rest } = state;
   const blob = new Blob(
@@ -256,6 +304,106 @@ $("download").addEventListener("click", () => {
   a.click();
   URL.revokeObjectURL(url);
 });
+
+const STATUS_LABEL = { done: "done", blocked: "blocked", error: "error", running: "running" };
+const when = (iso) => {
+  const date = new Date(iso || "");
+  if (Number.isNaN(date.getTime())) return "—";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+const shortUrl = (url) => {
+  try {
+    const parsed = new URL(url);
+    const path = parsed.pathname === "/" ? "" : parsed.pathname;
+    return `${parsed.host}${path}`.slice(0, 68);
+  } catch {
+    return String(url || "").slice(0, 68);
+  }
+};
+const seconds = (ms) => `${((ms || 0) / 1000).toFixed(2)} s`;
+const trailRow = (h) =>
+  `<div class="trace-row"><span class="number">${String(h.step).padStart(2, "0")}</span><div>${escape(h.action)}${h.text ? ` <b>“${escape(h.text)}”</b><small>${escape(h.text_helper)}</small>` : ""}</div><span class="time">${h.latency_ms} ms · ${percent(h.probability)}</span><span class="effect">${h.page_changed ? "Page changed" : "No change observed"}${h.via === "dom" ? " · via node" : ""}</span></div>`;
+
+async function loadRuns() {
+  let runs = [];
+  try {
+    runs = (await fetch("/api/runs").then((r) => r.json())).runs || [];
+  } catch {
+    $("runs-count").textContent = "unavailable";
+    return;
+  }
+  $("runs-count").textContent = `${runs.length} recorded`;
+  $("runs-list").innerHTML = runs.length
+    ? runs
+        .map(
+          (run) => `<div class="run-row" data-run="${escape(run.id)}">
+            <span class="badge ${escape(run.status)}">${escape(STATUS_LABEL[run.status] || run.status)}</span>
+            <div class="run-main"><strong>${escape(shortUrl(run.url))}</strong><small>${escape((run.goal || "").slice(0, 96))}</small></div>
+            <span class="run-meta">${run.steps || 0} actions · ${seconds(run.elapsed_ms)}</span>
+            <span class="run-time">${escape(when(run.started_at))}</span>
+          </div>`,
+        )
+        .join("")
+    : '<p class="muted">Every run is saved locally. Click one to review its trail.</p>';
+}
+
+let openRunRecord = null;
+async function showRun(id) {
+  let record = null;
+  try {
+    record = await fetch(`/api/runs/${encodeURIComponent(id)}`).then((r) => r.json());
+  } catch {
+    return;
+  }
+  if (record.error) return;
+  openRunRecord = record;
+  $("run-title").textContent = shortUrl(record.url);
+  $("run-meta").innerHTML = [
+    ["Status", escape(STATUS_LABEL[record.status] || record.status)],
+    ["Goal", escape(record.goal || "")],
+    ["Page", escape(record.url || "")],
+    ["Started", `${escape(when(record.started_at))} → ${escape(when(record.finished_at))}`],
+    ["Duration", seconds(record.elapsed_ms)],
+    ["Actions", `${record.steps || 0} executed · ${(record.decisions || []).length} decisions · ${(record.text_calls || []).length} texts`],
+  ]
+    .map(([key, value]) => `<div><span>${key}</span><strong>${value}</strong></div>`)
+    .join("");
+  $("run-shot").innerHTML = record.has_shot
+    ? `<p class="distribution-label">Final screen</p><img src="/api/runs/${encodeURIComponent(record.id)}/shot" alt="Last observed page" />`
+    : "";
+  $("run-errors").innerHTML = (record.errors || []).length
+    ? `<p class="distribution-label">Errors</p>${record.errors
+        .map((e) => `<div class="drawer-error">${escape(e.message)}<small>${escape(when(e.at))}</small></div>`)
+        .join("")}`
+    : "";
+  const history = record.history || [];
+  $("run-history").innerHTML = history.length
+    ? history.map(trailRow).join("")
+    : '<p class="muted">No action was executed in this run.</p>';
+  $("run-step-count").textContent = `${history.length} actions · ${seconds(record.elapsed_ms)}`;
+  const texts = record.text_calls || [];
+  $("run-texts").innerHTML = texts.length
+    ? texts
+        .map(
+          (t) =>
+            `<div class="trace-row"><span class="number">txt</span><div>${escape(t.field || "")} <b>“${escape(t.value ?? "")}”</b><small>${escape(t.model || "")}</small></div><span class="time">${t.latency_ms || 0} ms</span><span class="effect">generated</span></div>`,
+        )
+        .join("")
+    : '<p class="muted">Nothing needed generated text.</p>';
+  $("run-export").disabled = false;
+  $("run-detail").hidden = false;
+}
+
+// A declaration rather than a const arrow: the listeners above are registered while this module
+// is still evaluating, so they would otherwise read an uninitialised binding and abort the module.
+function closeRun() {
+  $("run-detail").hidden = true;
+  openRunRecord = null;
+}
+
+recall();
+loadRuns();
 fetch("/api/state")
   .then((r) => r.json())
   .then((s) => {
