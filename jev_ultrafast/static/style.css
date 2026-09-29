@@ -1241,6 +1241,13 @@ button.icon.small.danger:hover:not(:disabled) {
   justify-content: flex-end;
   gap: 6px;
 }
+.command-actions #new-task {
+  min-height: 46px;
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
 .command-actions button[hidden] {
   display: none;
 }

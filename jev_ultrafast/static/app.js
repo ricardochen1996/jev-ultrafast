@@ -18,7 +18,7 @@ const STRINGS = {
     defaultGoal: 'Type "browser ultrafast" into the search box, then click search.',
     instructionPlaceholder: "Type the next instruction for this page and press Enter",
     append: "Continue",
-    newTask: "New task",
+    newTask: "NEW",
     newTaskHint: "Start over on this address with the goal in the box, or the first goal if it is empty",
     replay: "Re-run whole task",
     appendBusy: "Appending the instruction…",
@@ -108,7 +108,7 @@ const STRINGS = {
     defaultGoal: "在搜索框输入 browser ultrafast，然后点击搜索。",
     instructionPlaceholder: "输入下一条指令，按回车继续在当前页面操作",
     append: "继续",
-    newTask: "新任务",
+    newTask: "新建",
     newTaskHint: "在这个网址上用输入框里的任务重新开始；输入框为空时沿用最初的任务",
     replay: "重新执行整个任务",
     appendBusy: "正在追加指令…",
@@ -239,7 +239,6 @@ const ICONS = {
   play: svg('<path d="M7 4.5v15l12-7.5z" fill="currentColor" stroke="none"/>'),
   stop: svg('<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/>'),
   enter: svg('<path d="M20 5v7a3 3 0 0 1-3 3H5"/><path d="m9 11-4 4 4 4"/>'),
-  plus: svg('<path d="M12 5v14M5 12h14"/>'),
   globe: svg('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>'),
   pencil: svg('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>'),
   tab: svg('<rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 10h18M8 5v5"/>'),
@@ -316,7 +315,8 @@ function applyLanguage() {
   $("goal").placeholder = t("goalPlaceholder");
   $("overlays-toggle").title = t("targets");
   setText("label-step-url", t("stepUrl"));
-  $("new-task").title = $("new-task").ariaLabel = t("newTaskHint");
+  setText("new-task", t("newTask"));
+  $("new-task").title = t("newTaskHint");
   $("download").title = $("download").ariaLabel = t("export");
   $("run-export").title = $("run-export").ariaLabel = t("export");
   $("run-replay").title = $("run-replay").ariaLabel = t("replayRun");
@@ -667,12 +667,35 @@ async function deleteRun(id) {
     headers: { "Content-Type": "application/json", "X-Demo-Token": token },
     body: "{}",
   });
+  const result = await response.json();
   if (!response.ok) {
-    $("error").textContent = say((await response.json()).error || "Request failed");
+    $("error").textContent = say(result.error || "Request failed");
     $("error").hidden = false;
   }
   if (openRunRecord?.id === id) closeRun();
+  if (result.cleared) resetConsole();
   loadRuns();
+}
+// The run on screen is gone: forget its page, its address, and its task, as on a first visit.
+function resetConsole() {
+  state = null;
+  automatic = false;
+  try {
+    localStorage.removeItem(STORE.url);
+    localStorage.removeItem(STORE.goal);
+  } catch {
+    /* Nothing was remembered. */
+  }
+  $("target-url").value = DEFAULT_URL;
+  $("goal").value = "";
+  $("error").hidden = true;
+  $("empty").hidden = false;
+  $("screenshot").hidden = true;
+  $("screenshot").removeAttribute("src");
+  for (const id of ["targets", "plan", "operation-choices"]) $(id).innerHTML = "";
+  for (const id of ["latency", "confidence", "completion"]) $(id).textContent = "—";
+  applyLanguage();
+  controls();
 }
 $("lang").addEventListener("click", (event) => {
   const choice = event.target.closest("[data-lang]")?.dataset.lang;
@@ -895,7 +918,8 @@ fetch("/api/state")
     state = s;
     // A run that has already finished is history: the records keep it, and the console starts clean.
     // A run still in progress is restored exactly as it was.
-    if (["done", "blocked", "error"].includes(state.status)) {
+    // A page whose record was deleted has nothing left to continue either.
+    if (["done", "blocked", "error"].includes(state.status) || (state.page && !state.run_id)) {
       state = await call("clear");
     }
     render();

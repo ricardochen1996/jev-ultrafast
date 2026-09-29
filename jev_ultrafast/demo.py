@@ -174,13 +174,16 @@ def start_url(record):
 
 
 def delete_run(name):
-    """Remove a stored run; the current run stops being recorded if it is the one removed."""
+    """Remove a stored run. Removing the run on screen also ends it, so the console starts clean."""
     load_run(name)
     for suffix in (".json", ".jpg"):
         (RUNS / f"{name}{suffix}").unlink(missing_ok=True)
-    if (RUN.get("record") or {}).get("id") == name:
-        RUN["record"] = None
-    return {"deleted": name}
+    current = (RUN.get("record") or {}).get("id") == name
+    if current:
+        close_browser()
+        RUN.clear()
+        NOTICE.pop("text", None)
+    return {"deleted": name, "cleared": current}
 
 
 def open_run(url, instruction, *, reuse, record_dir=None, previous=None):
