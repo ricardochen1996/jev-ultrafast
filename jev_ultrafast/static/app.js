@@ -29,8 +29,6 @@ const STRINGS = {
     noPage: "No page yet",
     urlPlaceholder: "https://example.com/page — http or https only",
     goalPlaceholder: "Describe the task for this page, and what should be visible when it is done.",
-    reuse: "Use my open tab",
-    reuseHint: "Drive the tab you already have open at this address, instead of opening a new one.",
     start: "Start",
     stop: "Stop",
     targets: "Target boxes",
@@ -121,8 +119,6 @@ const STRINGS = {
     noPage: "尚未打开页面",
     urlPlaceholder: "https://example.com/page — 仅支持 http 或 https",
     goalPlaceholder: "描述这个页面上要完成的任务，以及完成时应当看到什么。",
-    reuse: "复用已打开的标签页",
-    reuseHint: "直接在你已打开该网址的标签页里操作，而不是新开一个标签页。",
     start: "开始",
     stop: "停止",
     targets: "目标框",
@@ -259,7 +255,7 @@ function icon(node, name) {
 }
 document.querySelectorAll("i[data-icon]").forEach((node) => (node.innerHTML = ICONS[node.dataset.icon]));
 let openRunRecord = null;
-const STORE = { url: "jev.url", goal: "jev.goal", reuse: "jev.reuse.v2", lang: "jev.lang" };
+const STORE = { url: "jev.url", goal: "jev.goal", lang: "jev.lang" };
 const stored = (key, fallback = null) => {
   try {
     return localStorage.getItem(key) ?? fallback;
@@ -294,7 +290,6 @@ const remember = (goal = !state?.page) => {
   try {
     localStorage.setItem(STORE.url, $("target-url").value);
     if (goal) localStorage.setItem(STORE.goal, $("goal").value);
-    localStorage.setItem(STORE.reuse, $("reuse").checked ? "1" : "0");
   } catch {
     /* Private mode still runs the page; it just forgets. */
   }
@@ -304,7 +299,6 @@ const recall = () => {
   try {
     $("target-url").value = localStorage.getItem(STORE.url) || DEFAULT_URL;
     $("goal").value = localStorage.getItem(STORE.goal) || "";
-    $("reuse").checked = localStorage.getItem(STORE.reuse) !== "0";
   } catch {
     /* Nothing remembered yet. */
   }
@@ -318,7 +312,6 @@ function applyLanguage() {
   });
   $("target-url").placeholder = t("urlPlaceholder");
   $("goal").placeholder = t("goalPlaceholder");
-  $("reuse-toggle").title = `${t("reuse")} — ${t("reuseHint")}`;
   $("overlays-toggle").title = t("targets");
   setText("label-step-url", t("stepUrl"));
   $("new-task").title = $("new-task").ariaLabel = t("newTaskHint");
@@ -408,7 +401,6 @@ function controls() {
   $("new-task").disabled = busy;
   $("goal").disabled = busy;
   $("target-url").disabled = busy;
-  $("reuse").disabled = busy;
   $("download").disabled = !state?.history?.length;
   $("run-replay").disabled = busy || !openRunRecord;
   document.querySelectorAll("[data-run-action]").forEach((node) => (node.disabled = busy));
@@ -447,7 +439,7 @@ function render() {
     $("error").hidden = false;
   }
   // Target boxes are placed in percentages of the observed viewport, so the frame has to match
-  // that viewport instead of one fixed size: a reused tab keeps the user's own window size.
+  // that viewport instead of one fixed size: the window the run happens in decides it.
   if (state.page?.w && state.page?.h) $("viewport").style.aspectRatio = `${state.page.w} / ${state.page.h}`;
   $("helper").textContent = `${t("title")} · ${state.text_model}`;
   $("plan").innerHTML = (state.plan || [])
@@ -468,6 +460,10 @@ function render() {
     loadRuns();
   }
   if (!page) {
+    $("empty").hidden = false;
+    $("screenshot").hidden = true;
+    $("screenshot").removeAttribute("src");
+    $("targets").innerHTML = "";
     controls();
     return;
   }
@@ -583,7 +579,7 @@ function begin() {
     automatic = true;
     controls();
     try {
-      await call("open", { instruction: $("goal").value, url, reuse: $("reuse").checked });
+      await call("open", { instruction: $("goal").value, url, reuse: false });
       $("goal").value = "";
       await settle();
     } finally {
@@ -630,7 +626,7 @@ function replay(url, instructions) {
     automatic = true;
     controls();
     try {
-      await call("open", { url, reuse: $("reuse").checked, instruction: instructions[0] });
+      await call("open", { url, reuse: false, instruction: instructions[0] });
       $("goal").value = "";
       await runToSettle();
       for (const text of instructions.slice(1)) {
@@ -762,7 +758,6 @@ $("run-export").addEventListener("click", () => {
 });
 $("target-url").addEventListener("change", () => remember());
 $("goal").addEventListener("change", () => remember());
-$("reuse").addEventListener("change", () => remember());
 $("download").addEventListener("click", () => {
   const { page, ...rest } = state;
   const blob = new Blob(
@@ -894,8 +889,13 @@ applyLanguage();
 loadRuns();
 fetch("/api/state")
   .then((r) => r.json())
-  .then((s) => {
+  .then(async (s) => {
     state = s;
+    // A run that has already finished is history: the records keep it, and the console starts clean.
+    // A run still in progress is restored exactly as it was.
+    if (["done", "blocked", "error"].includes(state.status)) {
+      state = await call("clear");
+    }
     render();
     if (state.page && !busy) {
       $("goal").value = "";

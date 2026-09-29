@@ -45,12 +45,57 @@ def open_target(url):
     return None
 
 
+def active_tabs(limit=12):
+    """{window id: the tab that window is showing}, so a tab we open cannot steal a view.
+
+    Chrome activates a target created over CDP even when it is asked for a background tab, and it
+    chooses the window itself. Recording what each window is showing first lets the new tab be put
+    back behind it. Only a few candidates are attached: this runs once per run, and the user may
+    have many tabs open.
+    """
+    active = {}
+    for target in cdp("Target.getTargets")["targetInfos"][:limit]:
+        if target.get("type") != "page":
+            continue
+        session = None
+        try:
+            session = cdp("Target.attachToTarget", targetId=target["targetId"], flatten=True)["sessionId"]
+            state = cdp(
+                "Runtime.evaluate",
+                expression="document.visibilityState==='visible'",
+                session_id=session,
+                returnByValue=True,
+            )
+            if state.get("result", {}).get("value"):
+                window = cdp("Browser.getWindowForTarget", targetId=target["targetId"])["windowId"]
+                active.setdefault(window, target["targetId"])
+        except Exception:
+            continue
+        finally:
+            if session:
+                try:
+                    cdp("Target.detachFromTarget", sessionId=session)
+                except Exception:
+                    pass
+    return active
+
+
 class Browser:
     def __init__(self, url, reuse=False):
         ensure_daemon()
         existing = open_target(url) if reuse else None
         self.owned = existing is None
+        watching = active_tabs() if self.owned else {}
         self.attach(existing or cdp("Target.createTarget", url="about:blank", background=True)["targetId"])
+        if self.owned:
+            # Put the tab the user was reading back in front, in the window this tab landed in.
+            try:
+                window = cdp("Browser.getWindowForTarget", targetId=self.target)["windowId"]
+            except Exception:
+                window = None
+            previous = watching.get(window)
+            if previous and previous != self.target:
+                cdp("Target.activateTarget", targetId=previous)
         if self.owned:
             # The emulated viewport belongs to an owned tab; the tab you are watching keeps its own size.
             self.call("Emulation.setDeviceMetricsOverride", width=1120, height=780, deviceScaleFactor=1, mobile=False)

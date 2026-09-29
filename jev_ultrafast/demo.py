@@ -258,6 +258,13 @@ def command(name, body):
     global AGENT
     if name.startswith("runs/") and name.endswith("/delete"):
         return delete_run(name.removeprefix("runs/").removesuffix("/delete"))
+    if name == "clear":
+        # A finished run belongs to the history, not to the console: opening the page again starts
+        # clean. A run still in progress keeps its tab, its page, and its trail.
+        close_browser()
+        RUN.clear()
+        NOTICE.pop("text", None)
+        return response_state()
     if name in {"open", "reset"}:
         record_dir = Path.cwd() / "artifacts" / "frames" if body.get("record") else None
         RUN["record_dir"] = record_dir
