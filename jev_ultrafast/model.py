@@ -34,18 +34,29 @@ def post_json(url, key, body, headers=None, fallback=None):
     """Post one System One request, with a second endpoint for when the first is out of quota.
 
     A 429 or 402 is the provider refusing this key, not a bad request: another endpoint — a local
-    model, for instance — can answer the same protocol while the quota recovers.
+    model, for instance — can answer the same protocol while the quota recovers. The refusal is
+    remembered for a while, because a rate-limited endpoint answers slowly and every decision would
+    otherwise pay that round trip before falling back.
     """
+    global quota_until
+    if fallback and time.monotonic() < quota_until:
+        return post_once(fallback, key, body, headers)
     try:
         return post_once(url, key, body, headers)
     except QuotaExceeded:
         if not fallback:
             raise
+        quota_until = time.monotonic() + QUOTA_COOLDOWN
         return post_once(fallback, key, body, headers)
 
 
 class QuotaExceeded(RuntimeError):
     """The provider refused the request for this key: no balance, or a rate limit."""
+
+
+# How long a quota refusal keeps the primary endpoint out of the way, in seconds.
+QUOTA_COOLDOWN = float(os.environ.get("TYPESAFE_QUOTA_COOLDOWN", "120"))
+quota_until = 0.0
 
 
 def post_once(url, key, body, headers=None):
