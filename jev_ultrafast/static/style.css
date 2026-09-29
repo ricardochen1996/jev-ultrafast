@@ -905,3 +905,198 @@ textarea:focus-visible {
   color: #8d9186;
   margin-top: 3px;
 }
+
+/* ---------------------------------------------------------------------------
+   Console layout: a whole run fits one screen. Panels scroll, the page does
+   not. Marketing chrome is gone from the markup, so its rules simply retire.
+   --------------------------------------------------------------------------- */
+html,
+body {
+  height: 100%;
+}
+body {
+  overflow: hidden;
+}
+main {
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0 22px 14px;
+  display: grid;
+  /* Fixed rows, placed explicitly: a hidden error bar must not shift every panel up a row. */
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto;
+  gap: 10px;
+}
+.topbar {
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 42px;
+  border-bottom: 1px solid var(--line);
+}
+.topbar .local {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.topbar .status {
+  font-size: 12px;
+  color: #7c8073;
+}
+.topbar-right {
+  margin-left: auto;
+  font:
+    11px ui-monospace,
+    monospace;
+  color: #8d9186;
+}
+.command {
+  grid-row: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 6fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+  padding: 10px 12px;
+}
+.command #goal {
+  min-height: 44px;
+  max-height: 96px;
+}
+.command-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.toolbar {
+  grid-row: 3;
+  border: 0;
+  padding: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+#error {
+  grid-row: 4;
+}
+.workspace {
+  grid-row: 5;
+  min-height: 0;
+  align-items: stretch;
+}
+.browser-panel {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.viewport {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.viewport img {
+  max-height: 100%;
+  max-width: 100%;
+  width: auto;
+  object-fit: contain;
+}
+.viewport .empty {
+  height: auto;
+}
+aside {
+  min-height: 0;
+  overflow-y: auto;
+}
+.bottom {
+  grid-row: 6;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 22px;
+  max-height: 34vh;
+  min-height: 118px;
+}
+.bottom > * {
+  min-height: 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.runs {
+  padding: 0 0 6px;
+}
+.runs > summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+  padding: 2px 0 8px;
+}
+.runs > summary::-webkit-details-marker {
+  display: none;
+}
+.runs > summary::before {
+  content: "▸";
+  font-size: 10px;
+  color: #8d9186;
+}
+.runs[open] > summary::before {
+  content: "▾";
+}
+.runs > summary .trace-title {
+  margin-right: auto;
+}
+.trace-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.trace-title span {
+  font:
+    11px ui-monospace,
+    monospace;
+  margin-left: 10px;
+  color: #8d9186;
+  font-weight: 400;
+}
+.trace {
+  padding: 0 0 4px;
+}
+.trace-heading {
+  margin-bottom: 8px;
+}
+.trace-tools {
+  display: flex;
+  gap: 8px;
+}
+.model-details {
+  grid-row: 7;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+.model-details > summary {
+  font-size: 12px;
+  color: #7c8073;
+  cursor: pointer;
+}
+.model-details pre {
+  max-height: 30vh;
+  overflow: auto;
+}
+@media (max-width: 1100px) {
+  .command {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .command-actions {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
