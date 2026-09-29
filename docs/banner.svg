@@ -1,7 +1,34 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="480" viewBox="0 0 1400 480">
-<rect width="1400" height="480" rx="20" fill="#f5f5ed"/>
-<g fill="#252a23" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"><text x="64" y="65" font-size="17" letter-spacing="3">BROWSER USE × TYPESAFE</text><text x="60" y="207" font-size="100" font-weight="650" letter-spacing="-8">JEV</text><text x="59" y="311" font-size="100" font-weight="650" letter-spacing="-8">ULTRAFAST</text><text x="67" y="405" font-size="24" fill="#707969">CHOOSE. CLICK. GONE.</text></g>
-<g transform="translate(825 94) rotate(-4 240 140)"><rect x="0" y="0" width="495" height="294" rx="12" fill="#fff" stroke="#263c2a" stroke-width="3"/><path d="M0 40H495" stroke="#263c2a" stroke-width="2"/><circle cx="22" cy="21" r="4" fill="#d9dece"/><circle cx="38" cy="21" r="4" fill="#d9dece"/><circle cx="54" cy="21" r="4" fill="#d9dece"/>
-<rect x="27" y="66" width="441" height="43" rx="5" fill="#f0f3e9"/><text x="43" y="94" font-family="monospace" font-size="19" fill="#87937c">choose one. keep moving.</text><g fill="none" stroke="#c1cab6" stroke-width="2"><rect x="28" y="129" width="129" height="75" rx="4"/><rect x="185" y="129" width="129" height="75" rx="4"/><rect x="342" y="129" width="126" height="75" rx="4"/></g><rect x="184" y="128" width="131" height="77" rx="4" fill="#edf4df" stroke="#4b7948" stroke-width="3"/><rect x="186" y="117" width="37" height="24" rx="4" fill="#4b7948"/><text x="193" y="134" font-family="monospace" font-size="15" fill="#fff">e7</text><path d="M245 167L257 212L267 196L290 196Z" fill="#ea7345" stroke="#a64424" stroke-width="2"/><path d="M28 233H212M28 252H340" stroke="#d9e1cf" stroke-width="5" stroke-linecap="round"/></g>
-<g fill="none" stroke="#ed784c" stroke-linecap="round"><path d="M755 182H807M726 211H800M743 240H795" stroke-width="6"/></g>
+<rect width="1400" height="480" rx="20" fill="#f7f7f2"/>
+<g font-family="Inter,system-ui,-apple-system,Segoe UI,sans-serif" fill="#1d1f1a">
+<text x="64" y="72" font-size="17" letter-spacing="3" fill="#7c8073">BUILT ON JEV ULTRAFAST · TYPESAFE</text>
+<text x="60" y="200" font-size="92" font-weight="700" letter-spacing="-4">Browser</text>
+<text x="60" y="296" font-size="92" font-weight="700" letter-spacing="-4">Ultrafast</text>
+<text x="64" y="370" font-size="26" fill="#6f7368">One goal. Pick, act, continue.</text>
+<g font-size="15" fill="#176743"><circle cx="75" cy="416" r="11" fill="#176743"/><text x="70" y="421" fill="#fff" font-size="13" font-weight="600">1</text><text x="96" y="421">Page</text>
+<circle cx="171" cy="416" r="11" fill="#176743"/><text x="166" y="421" fill="#fff" font-size="13" font-weight="600">2</text><text x="192" y="421">Task</text>
+<circle cx="265" cy="416" r="11" fill="#176743"/><text x="260" y="421" fill="#fff" font-size="13" font-weight="600">3</text><text x="286" y="421">Run</text></g>
+</g>
+<g transform="translate(700 78)">
+<rect width="636" height="324" rx="14" fill="#fff" stroke="#dcdfd4" stroke-width="2"/>
+<rect x="20" y="20" width="596" height="58" rx="10" fill="#fbfbf8" stroke="#e3e5dc"/>
+<text x="38" y="55" font-family="Inter,system-ui,sans-serif" font-size="16" fill="#1d1f1a">google.com</text>
+<path d="M178 32V66" stroke="#e3e5dc"/>
+<text x="196" y="55" font-family="Inter,system-ui,sans-serif" font-size="16" fill="#1d1f1a">Search for browser ultrafast</text>
+<rect x="552" y="28" width="52" height="42" rx="8" fill="#176743"/><path d="M572 39v20l16-10z" fill="#fff"/>
+<rect x="20" y="96" width="400" height="208" rx="10" fill="#f3f4ee"/>
+<rect x="60" y="128" width="210" height="30" rx="15" fill="#fff" stroke="#c9cfbf"/>
+<rect x="58" y="126" width="214" height="34" rx="17" fill="none" stroke="#176743" stroke-width="2.5"/>
+<rect x="46" y="116" width="22" height="18" rx="4" fill="#176743"/><text x="52" y="130" font-family="ui-monospace,monospace" font-size="12" fill="#fff">4</text>
+<g fill="none" stroke="#c9cfbf" stroke-width="2"><rect x="60" y="180" width="96" height="26" rx="5"/><rect x="170" y="180" width="96" height="26" rx="5"/></g>
+<path d="M60 236H340M60 256H300M60 276H320" stroke="#dde1d5" stroke-width="7" stroke-linecap="round"/>
+<g font-family="Inter,system-ui,sans-serif">
+<text x="440" y="122" font-size="12" letter-spacing="1.5" fill="#8d9186">NEXT ACTION</text>
+<text x="440" y="152" font-size="22" font-weight="600" fill="#1d1f1a">TYPE_TEXT [4]</text>
+<rect x="440" y="172" width="80" height="26" rx="6" fill="#eef6e5" stroke="#88ac79"/><text x="450" y="190" font-size="13" fill="#185c3b">TYPE 98%</text>
+<rect x="528" y="172" width="80" height="26" rx="6" fill="#fff" stroke="#dbe2d4"/><text x="538" y="190" font-size="13" fill="#687260">CLICK 2%</text>
+<text x="440" y="236" font-size="12" letter-spacing="1.5" fill="#8d9186">TEXT</text>
+<text x="440" y="266" font-size="20" fill="#1d1f1a">“browser ultrafast”</text>
+</g>
+</g>
 </svg>
