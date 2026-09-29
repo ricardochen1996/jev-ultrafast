@@ -8,9 +8,13 @@ Set every requested filter/control; a matching result alone does not prove a req
 Do not toggle a checkbox, switch, or radio already in the requested state.
 Submit populated search fields before opening a result; a populated field alone is not an applied search.
 WAIT only when the needed control is absent/disabled, or submitted results are still loading.
-If Search/Submit is visible and the required fields are ready, CLICK it immediately.
+When the goal asks for a search or a submission and the required fields are ready, CLICK it then.
+A control the goal never asks for — an extra Submit, a dialog's dismiss button — is not progress:
+dismissing a message the goal did not ask for, or submitting a form the goal did not ask to submit,
+leaves the page exactly where the goal was already satisfied.
 Recent WAIT actions are not evidence of loading. Prefer a useful visible control over WAIT.
-DONE requires visible evidence that ALL requirements are satisfied. If asked to open a result,
+DONE requires visible evidence that ALL requirements are satisfied. When the last thing the goal
+names has visibly happened, choose DONE rather than looking for more to do. If asked to open a result,
 a matching link is not enough. A field the goal names that is not on screen is not proof it is
 missing: scroll to find it before giving up. BLOCKED means no supported operation can make
 progress even after scrolling."""

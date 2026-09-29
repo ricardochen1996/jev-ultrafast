@@ -473,16 +473,16 @@ def test_repeating_an_action_over_the_same_controls_is_recorded_as_a_loop(runner
     state["decision"] = {**decision("e2"), "operation": "CLICK", "target": "2"}
     same = page()  # the reload hands back exactly the same controls
     state["browser"].observe = Mock(return_value=same)
-    state["history"] = [
-        {
-            "step": 1,
-            "action": "Open Search",
-            "kind": "click",
-            "page_changed": True,
-            "probability": 0.6,
-            "latency_ms": 10,
-        },
-    ]
+    seen = {
+        "step": 1,
+        "action": "Open Search",
+        "kind": "click",
+        "page_changed": True,
+        "probability": 0.6,
+        "latency_ms": 10,
+        "controls": loop.controls_signature(same),
+    }
+    state["history"] = [seen, {**seen, "step": 2}]
     runner.command("act", {"fingerprint": state["page"]["fingerprint"]})
     assert state["loops"] == [("CLICK", "Open Search")]
 
@@ -499,7 +499,7 @@ def test_a_page_that_keeps_looping_stops_instead_of_spending_the_budget(runner, 
     state["status"] = "ready"
     chosen = Mock()
     monkeypatch.setattr(loop, "choose", chosen)
-    with pytest.raises(ValueError, match="kept changing nothing"):
+    with pytest.raises(ValueError, match="without moving the page"):
         runner.command("predict")
     chosen.assert_not_called()
     assert state["status"] == "blocked"
@@ -561,3 +561,63 @@ def test_a_quota_refusal_is_remembered_so_the_next_decision_skips_the_primary(mo
     model.post_json("https://primary", "k", {}, fallback="https://local")
     model.post_json("https://primary", "k", {}, fallback="https://local")
     assert calls == ["https://primary", "https://local", "https://local"]
+
+
+def test_an_alternating_action_loop_is_recorded_too(runner):
+    """Submit raises a dialog, the dialog is dismissed, submit runs again: no adjacent repeat."""
+    state = runner.state
+    state["status"] = "ready"
+    state["loops"] = []
+    state["decision"] = {**decision("e2"), "operation": "CLICK", "target": "2"}
+    same = page()
+    state["browser"].observe = Mock(return_value=same)
+    state["page"] = same
+    state["history"] = [
+        {
+            "step": 1,
+            "action": "Open Search",
+            "kind": "click",
+            "page_changed": True,
+            "probability": 0.6,
+            "latency_ms": 10,
+            "controls": loop.controls_signature(same),
+        },
+        {  # the dialog this submit raised, dismissed between the submits
+            "step": 2,
+            "action": "Dismiss",
+            "kind": "click",
+            "page_changed": True,
+            "probability": 0.6,
+            "latency_ms": 10,
+            "controls": ("Dismiss",),
+        },
+        {
+            "step": 3,
+            "action": "Open Search",
+            "kind": "click",
+            "page_changed": True,
+            "probability": 0.6,
+            "latency_ms": 10,
+            "controls": loop.controls_signature(same),
+        },
+    ]
+    runner.command("act", {"fingerprint": state["page"]["fingerprint"]})
+    assert state["loops"] == [("CLICK", "Open Search")]
+
+
+def test_a_field_the_text_helper_refuses_is_left_alone(runner, monkeypatch):
+    """A refusal must not be re-decided forever: nothing was typed, so nothing would change."""
+    state = runner.state
+    state["status"] = "ready"
+    state["loops"] = []
+    state["decision"] = {**decision("e1"), "operation": "TYPE_TEXT", "target": "1"}
+    monkeypatch.setattr(loop, "field_text", Mock(side_effect=model.NoTextValue("no value")))
+    with pytest.raises(model.NoTextValue):
+        runner.command("act", {"fingerprint": state["page"]["fingerprint"]})
+    assert state["loops"] == [("TYPE_TEXT", "Search")]
+
+    chosen = Mock(return_value={**decision("e3"), "operation": "CLICK", "target": "2"})
+    monkeypatch.setattr(loop, "choose", chosen)
+    state["status"] = "ready"
+    runner.command("predict")
+    assert chosen.call_args.kwargs["avoid_labels"] == {("TYPE_TEXT", "Search")}
