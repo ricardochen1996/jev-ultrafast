@@ -61,7 +61,9 @@ cp .env.example .env
 uv run jev
 ```
 
-Open **http://127.0.0.1:8766** and click **Start demo → Run automatically**. The inspector shows numbered elements, operation probabilities, target probabilities, and executed actions. **Choose next** pauses before execution. Pick **Custom page · any URL** to run the same policy against any http(s) page, and leave **Use my open tab** checked to drive a tab you already have open instead of creating one.
+Open **http://127.0.0.1:8766**, enter the page address and the goal, and click **Start run → Run automatically**. The inspector shows numbered elements, operation probabilities, target probabilities, and executed actions. **Choose next** pauses before execution. The address and the goal are remembered in the browser, and leave **Use my open tab** checked to drive a tab you already have open instead of creating one.
+
+Every run is stored under `artifacts/runs/` with its goal, actions, decisions, generated text, errors, and final screen. The **Runs** list on the same page reopens any of them after a restart, and each entry can be exported as JSON.
 
 `TYPESAFE_BASE_URL` accepts any endpoint that speaks the System One protocol, so the hosted API is a default rather than a requirement: OpenCode's gateway serves the same request and response shape at `https://opencode.ai/zen/v1/systemone`. Chrome connects through [Browser Harness](https://github.com/browser-use/browser-harness), installed by `uv sync`. Run `uv run browser-harness --doctor` if it needs connecting. Allow remote debugging in Chrome when prompted.
 

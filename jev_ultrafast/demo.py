@@ -1,10 +1,13 @@
 """Loopback-only inspector for the Jev browser agent."""
 
 import atexit
+import base64
 import json
 import os
 import secrets
 import threading
+import time
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -22,6 +25,19 @@ LOCK = threading.Lock()
 AGENT = None
 RUN = {}
 NOTICE = {}
+RUNS = Path.cwd() / "artifacts" / "runs"
+SNAPSHOT_FIELDS = (
+    "id",
+    "url",
+    "title",
+    "goal",
+    "status",
+    "started_at",
+    "finished_at",
+    "elapsed_ms",
+    "steps",
+    "has_shot",
+)
 
 
 def load_environment():
@@ -33,6 +49,10 @@ def load_environment():
                 os.environ.setdefault(key, value)
 
 
+def timestamp():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
 def response_state():
     state = AGENT.snapshot() if AGENT else {"page": None, "status": "idle", "history": [], "decision": None}
     notice = NOTICE.pop("text", None)
@@ -40,6 +60,7 @@ def response_state():
         **state,
         "text_model": os.environ.get("TEXT_MODEL", "deepseek-chat"),
         "max_steps": MAX_STEPS,
+        "run_id": (RUN.get("record") or {}).get("id"),
         **({"notice": notice} if notice else {}),
     }
 
@@ -54,50 +75,151 @@ def close_browser():
         AGENT = None
 
 
-def open_run(url, goal, *, reuse, scenario):
-    """Start a run, reusing the tab already showing this page when asked to."""
+def save_run(force=False):
+    """Write the current run to disk so this and later sessions can review it.
+
+    Every command would rewrite several megabytes of model payload, so writes are rate limited
+    except at the end of a run, where the final state is always stored.
+    """
+    record = RUN.get("record")
+    if not record:
+        return
+    finished = record.get("status") in {"done", "blocked", "error"}
+    if not force and not finished and time.monotonic() - RUN.get("saved", 0.0) < 2:
+        return
+    if AGENT:
+        state = AGENT.snapshot()
+        page = state.get("page") or {}
+        record.update(
+            status=state.get("status", record.get("status", "running")),
+            elapsed_ms=state.get("elapsed_ms", record.get("elapsed_ms", 0)),
+            steps=len(state.get("history") or []),
+            url=page.get("url") or record.get("url", ""),
+            title=page.get("title") or record.get("title", ""),
+            history=state.get("history") or [],
+            decisions=state.get("decisions") or [],
+            text_calls=state.get("text_calls") or [],
+            page_text=(page.get("text") or "")[:4000],
+        )
+        shot = page.get("screenshot")
+        if shot and (finished or not record.get("has_shot")):
+            RUNS.mkdir(parents=True, exist_ok=True)
+            (RUNS / f"{record['id']}.jpg").write_bytes(base64.b64decode(shot))
+            record["has_shot"] = True
+    if record.get("status") in {"done", "blocked", "error"} and not record.get("finished_at"):
+        record["finished_at"] = timestamp()
+    RUNS.mkdir(parents=True, exist_ok=True)
+    (RUNS / f"{record['id']}.json").write_text(json.dumps(record, ensure_ascii=False))
+    RUN["saved"] = time.monotonic()
+
+
+def note_error(message, fatal=False):
+    """Keep failures with the run that produced them instead of only in the UI.
+
+    A rejected command (wrong order, missing page) is the user's input problem, not a failed run;
+    only an execution failure marks the run itself as broken.
+    """
+    record = RUN.get("record")
+    if record is None:
+        return
+    record.setdefault("errors", []).append({"at": timestamp(), "message": message})
+    if fatal and record.get("status") in {"running", "ready", "predicted"}:
+        record["status"] = "error"
+    save_run(force=True)
+
+
+def list_runs():
+    """Newest first, summaries only: a run record carries the whole model payload."""
+    runs = []
+    for path in sorted(RUNS.glob("*.json"), reverse=True)[:200]:
+        try:
+            record = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        runs.append({key: record.get(key) for key in SNAPSHOT_FIELDS})
+    runs.sort(key=lambda run: run.get("started_at") or "", reverse=True)
+    return runs
+
+
+def load_run(name):
+    if not name.replace("-", "").isalnum():
+        raise ValueError("Unknown run")
+    path = RUNS / f"{name}.json"
+    if not path.exists():
+        raise ValueError("Unknown run")
+    record = json.loads(path.read_text())
+    record["errors"] = record.get("errors") or []
+    return record
+
+
+def open_run(url, goal, *, reuse, record_dir=None, previous=None):
+    """Start a run, reusing the tab already showing this page when asked to.
+
+    ``previous`` continues an attempt whose tab was lost: the run keeps its identity and its trail.
+    """
     global AGENT
     close_browser()
-    AGENT = Agent(url, goal, screenshots=True, reuse=reuse, record_dir=RUN.get("record_dir"))
-    AGENT.state["scenario"] = scenario
-    RUN.update(url=url, goal=goal, reuse=reuse, scenario=scenario)
+    AGENT = Agent(url, goal, screenshots=True, reuse=reuse, record_dir=record_dir)
+    run_id = (previous or {}).get("id") or (
+        time.strftime("%Y%m%dT%H%M%S", time.localtime()) + "-" + secrets.token_hex(2)
+    )
+    RUN.clear()
+    RUN.update(url=url, goal=goal, reuse=reuse, saved=0.0, record_dir=record_dir)
+    RUN["record"] = {
+        "id": run_id,
+        "url": url,
+        "goal": goal,
+        "reuse": reuse,
+        "status": "running",
+        "started_at": (previous or {}).get("started_at") or timestamp(),
+        "finished_at": None,
+        "elapsed_ms": 0,
+        "steps": len((previous or {}).get("history") or []),
+        "title": "",
+        "history": list((previous or {}).get("history") or []),
+        "decisions": list((previous or {}).get("decisions") or []),
+        "text_calls": [],
+        "errors": [],
+        "has_shot": False,
+    }
+    save_run(force=True)
+
 
 
 def reopen():
     """Rebuild a run whose tab or CDP session died, so one dropped connection is not fatal."""
-    close_browser()
-    open_run(RUN["url"], RUN["goal"], reuse=RUN.get("reuse", False), scenario=RUN.get("scenario"))
+    record = RUN.get("record") or {}
+    open_run(
+        RUN["url"],
+        RUN["goal"],
+        reuse=RUN.get("reuse", False),
+        record_dir=RUN.get("record_dir"),
+        previous=record,  # the same attempt, with the same identity and trail
+    )
     NOTICE["text"] = "The browser session was lost and the page was reopened. Choose again to continue."
 
 
-def target_url(scenario, body):
-    """The page this run opens: a fixture, Google Flights, or the requested http(s) page."""
-    if scenario == "flights":
-        return "https://www.google.com/travel/flights?hl=en"
-    if scenario == "custom":
-        requested = body.get("url", "").strip()
-        parsed = urlparse(requested)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise ValueError("Enter a full http or https page address, for example https://example.com")
-        return requested
-    return f"{ORIGIN}/fixture.html?scenario={scenario}"
+def target_url(body):
+    """The page this run opens. http and https only: the inspector never loads anything else."""
+    requested = body.get("url", "").strip()
+    parsed = urlparse(requested)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("Enter a full http or https page address, for example https://example.com")
+    return requested
 
 
 def command(name, body):
     global AGENT
     if name == "reset":
-        scenario = body.get("scenario", "flights")
-        if scenario not in {"travel", "research", "flights", "custom"}:
-            raise ValueError("Unknown demo scenario")
         goal = body.get("goal", "").strip()
         if not goal or len(goal) > 2000:
             raise ValueError("Enter 1–2,000 characters")
-        url = target_url(scenario, body)
-        RUN["record_dir"] = Path.cwd() / "artifacts" / "frames" if body.get("record") else None
-        open_run(url, goal, reuse=bool(body.get("reuse")), scenario=scenario)
+        record_dir = Path.cwd() / "artifacts" / "frames" if body.get("record") else None
+        RUN["record_dir"] = record_dir
+        open_run(target_url(body), goal, reuse=bool(body.get("reuse")), record_dir=record_dir)
     else:
         if AGENT is None:
-            raise ValueError("Start a demo first")
+            raise ValueError("Start a run first")
         try:
             AGENT.command(name, body)
         except LostSession:
@@ -119,6 +241,7 @@ def command(name, body):
                 "The text helper returned no usable value, so nothing was typed. "
                 "It has been re-observed; choose again."
             )
+        save_run()
     return response_state()
 
 
@@ -140,6 +263,20 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/state":
             with LOCK:
                 return self.send(200, json.dumps(response_state()))
+        if path == "/api/runs":
+            return self.send(200, json.dumps({"runs": list_runs()}))
+        if path.startswith("/api/runs/"):
+            parts = path.removeprefix("/api/runs/").split("/")
+            try:
+                if len(parts) == 1:
+                    return self.send(200, json.dumps(load_run(parts[0])))
+                if len(parts) == 2 and parts[1] == "shot":
+                    shot = RUNS / f"{parts[0]}.jpg"
+                    if not shot.exists():
+                        return self.send(404, "No screenshot", "text/plain")
+                    return self.send(200, shot.read_bytes(), "image/jpeg")
+            except (OSError, ValueError) as error:
+                return self.send(404, json.dumps({"error": str(error)}))
         if path == "/demo.mp4":
             video = ROOT.parent / "docs" / "demo.mp4"
             if video.exists():
@@ -173,8 +310,10 @@ class Handler(BaseHTTPRequestHandler):
             result = command(self.path.removeprefix("/api/"), body)
             self.send(200, json.dumps(result))
         except (ValueError, RuntimeError, TimeoutError) as error:
+            note_error(str(error), fatal=not isinstance(error, ValueError))
             self.send(400, json.dumps({"error": str(error)}))
-        except Exception:
+        except Exception as error:
+            note_error(f"{type(error).__name__}: {error}")
             self.send(500, json.dumps({"error": "Local demo failed; no automatic retry. Reset to recover."}))
         finally:
             LOCK.release()
@@ -194,7 +333,3 @@ def main():
         pass
     finally:
         server.server_close()
-
-
-if __name__ == "__main__":
-    main()

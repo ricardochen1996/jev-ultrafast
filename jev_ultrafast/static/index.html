@@ -30,17 +30,11 @@
       <form id="task-form">
         <div class="task-label">
           <label for="goal">Give it a task</label
-          ><select id="scenario" name="scenario" aria-label="Demo scenario">
-            <option value="flights">Google Flights · real web</option>
-            <option value="travel">Travel planner · fixture</option>
-            <option value="research">Reading room · fixture</option>
-            <option value="custom">Custom page · any URL</option>
-          </select>
-          <label class="overlay-control" title="Drive the tab that already shows this page instead of opening a new one"
+          ><label class="overlay-control" title="Drive the tab that already shows this page instead of opening a new one"
             ><input name="reuse" id="reuse" type="checkbox" checked /> Use my open tab</label
           >
         </div>
-        <div class="task-row" id="url-row" hidden>
+        <div class="task-row" id="url-row">
           <input
             id="target-url"
             name="url"
@@ -49,14 +43,13 @@
             autocomplete="off"
             spellcheck="false"
             placeholder="https://example.com/page — http or https only"
-            aria-label="Custom page address"
+            aria-label="Page address"
           />
         </div>
         <div class="task-row">
-          <textarea id="goal" name="goal" rows="5">
-Find one-way flights from Zurich to London on September 20, 2026, for one adult in economy. Stop when matching flight options are visible. Do not select or book a flight.</textarea
+          <textarea id="goal" name="goal" rows="5" placeholder="Describe the task for this page, and what should be visible when it is done."></textarea
           ><button type="submit" id="start" class="primary">
-            Start demo <span>↗</span>
+            Start run <span>↗</span>
           </button>
         </div>
       </form>
@@ -136,6 +129,15 @@ Find one-way flights from Zurich to London on September 20, 2026, for one adult 
           </p>
         </aside>
       </section>
+      <section class="runs">
+        <div class="trace-heading">
+          <h2>Runs <span id="runs-count">0 recorded</span></h2>
+          <button type="button" id="runs-refresh">Refresh</button>
+        </div>
+        <div id="runs-list">
+          <p class="muted">Every run is saved locally. Click one to review its trail.</p>
+        </div>
+      </section>
       <section class="trace">
         <div class="trace-heading">
           <h2>Decision trail <span id="step-count">0 actions</span></h2>
@@ -155,6 +157,28 @@ Start a demo to inspect its structured state.</pre>
         ><span id="helper">Text helper loading</span>
       </footer>
     </main>
+    <div id="run-detail" class="drawer" hidden>
+      <div class="drawer-backdrop" id="run-close"></div>
+      <article class="drawer-body" role="dialog" aria-modal="true" aria-labelledby="run-title">
+        <div class="drawer-head">
+          <div>
+            <p class="eyebrow">RUN DETAIL</p>
+            <h2 id="run-title">Run</h2>
+          </div>
+          <div class="drawer-actions">
+            <button type="button" id="run-export" disabled>Export trace ↓</button>
+            <button type="button" id="run-close-button">Close</button>
+          </div>
+        </div>
+        <div id="run-meta" class="run-meta"></div>
+        <div id="run-shot" class="run-shot"></div>
+        <div id="run-errors"></div>
+        <h3 class="drawer-sub">Decision trail <span id="run-step-count"></span></h3>
+        <div id="run-history"></div>
+        <h3 class="drawer-sub">Text generated <span id="run-text-count"></span></h3>
+        <div id="run-texts"></div>
+      </article>
+    </div>
     <script type="module" src="/app.js"></script>
   </body>
 </html>
