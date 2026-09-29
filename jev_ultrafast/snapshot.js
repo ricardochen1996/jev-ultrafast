@@ -80,7 +80,10 @@
     if (e.tabIndex >= 0 && /picker|select/i.test(String(e.className||''))) return 'combobox';
     return null;
   };
-  cache.pageKey=()=>[performance.timeOrigin,location.href,scrollX,scrollY,innerWidth,innerHeight,
+  // What makes a decision stale: a different document, a different viewport, or different field
+  // values. Query-string churn and scroll offsets are not: apps rewrite the address as they render,
+  // and the executor resolves geometry and hit-tests again before any input.
+  cache.pageKey=()=>[performance.timeOrigin,location.origin+location.pathname,innerWidth,innerHeight,
     [...document.querySelectorAll('input,textarea,select')].filter(safe)
       .map(e=>[identity(e),e.value,e.checked,e.selectedIndex,e.disabled,e.readOnly])];
   cache.guard=e=>{
@@ -129,7 +132,9 @@
       const readonly=e.readOnly || e.getAttribute('aria-readonly')==='true';
       const custom=rname==='combobox' && !['INPUT','TEXTAREA','SELECT'].includes(e.tagName);
       const popup=formish && (e.getAttribute('aria-haspopup')!==null || e.tabIndex<0 || custom);
-      const editable=formish && !readonly && !popup &&
+      // A real text box stays typable even when it owns a suggestion popup: typing is how a search
+      // box is used. Only a custom picker (a box that is not an input) is open-only.
+      const editable=formish && !readonly &&
         (['textbox','searchbox','spinbutton'].includes(rname) ||
           (rname==='combobox' && ['INPUT','TEXTAREA'].includes(e.tagName)));
       const value='value' in e ? String(e.value) :
@@ -209,7 +214,7 @@
   // Compare meaning and identity. Geometry is always resolved and hit-tested just before input.
   const semantics=actions.map(({rect,...action})=>action);
   const marker=[performance.timeOrigin,location.href,scrollX,scrollY,innerWidth,innerHeight,
-    document.title,text,semantics,page_key[6]];
+    document.title,text,semantics,page_key[4]];
   const omitted_actions=Math.max(0,actions.length-250);
   actions.splice(250);
   actions.forEach((a,i)=>a.id='e'+(i+1));

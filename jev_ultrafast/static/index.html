@@ -50,6 +50,18 @@
         </div>
       </form>
       <div class="toolbar">
+        <div class="instruction-bar" id="instruction-bar" hidden>
+          <input
+            id="instruction"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Append an instruction and keep working on this page"
+            aria-label="Next instruction"
+          />
+          <button type="button" id="append">Append and continue</button>
+          <button type="button" id="replay">Re-run whole task</button>
+        </div>
         <div class="controls">
           <label class="overlay-control"
             ><input name="pace" id="pace" type="checkbox" /> <span id="label-slow">Slow motion</span></label
@@ -125,12 +137,12 @@
           <div id="history">
             <p class="muted">Each executed action leaves an observed result.</p>
           </div>
+          <details class="model-details">
+            <summary id="label-model-sees">What the model sees</summary>
+            <pre id="model-state">Start a run to inspect its structured state.</pre>
+          </details>
         </section>
       </section>
-      <details class="model-details">
-        <summary id="label-model-sees">What the model sees</summary>
-        <pre id="model-state">Start a run to inspect its structured state.</pre>
-      </details>
     </main>
     <div id="run-detail" class="drawer" hidden>
       <div class="drawer-backdrop" id="run-close"></div>

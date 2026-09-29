@@ -15,6 +15,14 @@ const STRINGS = {
   en: {
     title: "Browser Ultrafast",
     localBrowser: "Local demo browser",
+    defaultGoal: 'Type "browser ultrafast" into the search box, then click search.',
+    instructionPlaceholder: "Append an instruction and keep working on this page",
+    append: "Append and continue",
+    replay: "Re-run whole task",
+    appendBusy: "Appending the instruction…",
+    replayBusy: "Replaying the whole task…",
+    instructionStep: (n) => `Instruction ${n}`,
+    instructionMeta: "Instruction boundaries",
     emptyHint: "Enter a page and a goal, then start a run.",
     noPage: "No page yet",
     urlPlaceholder: "https://example.com/page — http or https only",
@@ -128,6 +136,14 @@ const STRINGS = {
   zh: {
     title: "Browser Ultrafast",
     localBrowser: "本地浏览器",
+    defaultGoal: "在搜索框输入 browser ultrafast，然后点击搜索。",
+    instructionPlaceholder: "追加一条指令，继续在同一个页面上操作",
+    append: "追加并继续",
+    replay: "重新执行整个任务",
+    appendBusy: "正在追加指令…",
+    replayBusy: "正在重新执行整个任务…",
+    instructionStep: (n) => `第 ${n} 条指令`,
+    instructionMeta: "指令分界",
     emptyHint: "填写页面地址和任务目标，然后开始运行。",
     noPage: "尚未打开页面",
     urlPlaceholder: "https://example.com/page — 仅支持 http 或 https",
@@ -243,14 +259,16 @@ const remember = () => {
     /* Private mode still runs the page; it just forgets. */
   }
 };
+const DEFAULT_URL = "https://www.google.com";
 const recall = () => {
   try {
-    $("target-url").value = localStorage.getItem(STORE.url) || "";
+    $("target-url").value = localStorage.getItem(STORE.url) || DEFAULT_URL;
     $("goal").value = localStorage.getItem(STORE.goal) || "";
     $("reuse").checked = localStorage.getItem(STORE.reuse) !== "0";
   } catch {
     /* Nothing remembered yet. */
   }
+  if (!$("target-url").value) $("target-url").value = DEFAULT_URL;
 };
 function applyLanguage() {
   document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
@@ -281,6 +299,10 @@ function applyLanguage() {
   setText("run-export", t("export"));
   setText("run-close-button", t("close"));
   setText("empty-hint", t("emptyHint"));
+  setText("append", t("append"));
+  setText("replay", t("replay"));
+  $("instruction").placeholder = t("instructionPlaceholder");
+  if (!$("goal").value.trim()) $("goal").value = t("defaultGoal");
   setText("page-title", state?.page?.title || t("noPage"));
   $("label-reuse").title = t("reuseHint");
   $("page-title").title = t("reuseHint");
@@ -334,6 +356,11 @@ function controls() {
   $("auto").hidden = automatic;
   $("stop").hidden = !automatic;
   $("download").disabled = !state?.history?.length;
+  const open = Boolean(state?.page) && !busy;
+  $("instruction-bar").hidden = !Boolean(state?.page);
+  $("instruction").disabled = !open;
+  $("append").disabled = !open || !$("instruction").value.trim();
+  $("replay").disabled = !open || !(state?.plan || []).length;
 }
 async function perform(fn, label) {
   if (busy) return;
@@ -462,13 +489,66 @@ $("task-form").addEventListener("submit", (event) => {
   remember();
   perform(
     () =>
-      call("reset", {
-        goal: $("goal").value,
+      call("open", {
+        instruction: $("goal").value,
         url,
         reuse: $("reuse").checked,
       }),
     t("busyOpening"),
   ).then(loadRuns);
+});
+
+async function runToSettle() {
+  // One instruction runs until the model stops: done, blocked, or paused by the user.
+  for (let i = 0; i < 120 && automatic; i++) {
+    $("status").textContent = t("running");
+    if ($("pace").checked) {
+      await call("predict");
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      if (!automatic) break;
+      await call("act", { fingerprint: state.page.fingerprint });
+    } else {
+      await call("tick");
+    }
+    if (["done", "blocked"].includes(state.status)) break;
+  }
+  return state.status;
+}
+
+$("instruction").addEventListener("input", controls);
+$("append").addEventListener("click", () => {
+  const text = $("instruction").value.trim();
+  if (!text) return;
+  perform(async () => {
+    await call("instruct", { instruction: text });
+    $("instruction").value = "";
+    controls();
+    await runToSettle();
+  }, t("appendBusy")).then(loadRuns);
+});
+$("replay").addEventListener("click", () => {
+  const instructions = (state?.plan || []).slice();
+  if (!instructions.length) return;
+  perform(async () => {
+    automatic = true;
+    controls();
+    try {
+      await call("open", {
+        url: state.run_url || state.page.url,
+        reuse: $("reuse").checked,
+        instruction: instructions[0],
+      });
+      await runToSettle();
+      for (const text of instructions.slice(1)) {
+        if (!automatic || state.status === "blocked") break;
+        await call("instruct", { instruction: text });
+        await runToSettle();
+      }
+    } finally {
+      automatic = false;
+      controls();
+    }
+  }, t("replayBusy")).then(loadRuns);
 });
 $("choose").addEventListener("click", () =>
   perform(() => call("predict"), t("busyPredicting")),
@@ -483,19 +563,11 @@ $("auto").addEventListener("click", () =>
   perform(async () => {
     automatic = true;
     controls();
-    for (let i = 0; i < state.max_steps * 2 && automatic; i++) {
-      $("status").textContent = t("running");
-      if ($("pace").checked) {
-        await call("predict");
-        await new Promise((resolve) => setTimeout(resolve, 450));
-        if (!automatic) break;
-        await call("act", { fingerprint: state.page.fingerprint });
-      } else {
-        await call("tick");
-      }
-      if (["done", "blocked"].includes(state.status)) break;
+    try {
+      await runToSettle();
+    } finally {
+      automatic = false;
     }
-    automatic = false;
   }, t("busyRunning")),
 );
 $("stop").addEventListener("click", () => {
@@ -598,7 +670,9 @@ const shortUrl = (url) => {
 const seconds = (ms) => t("seconds", ((ms || 0) / 1000).toFixed(2));
 const badge = (status) => t("badge")[status] || status;
 const trailRow = (h) =>
-  `<div class="trace-row"><span class="number">${String(h.step).padStart(2, "0")}</span><div>${escape(h.action)}${h.text ? ` <b>“${escape(h.text)}”</b><small>${escape(h.text_helper)}</small>` : ""}</div><span class="time">${h.latency_ms} ms · ${percent(h.probability)}</span><span class="effect">${h.page_changed ? t("pageChanged") : t("noChange")}${h.via === "dom" ? t("viaNode") : ""}</span></div>`;
+  h.kind === "instruction"
+    ? `<div class="trace-row instruction"><span class="number">${String(h.step).padStart(2, "0")}</span><div>${escape(t("instructionStep", (h.instruction ?? 0) + 1))} · ${escape(h.action)}</div></div>`
+    : `<div class="trace-row"><span class="number">${String(h.step).padStart(2, "0")}</span><div>${escape(h.action)}${h.text ? ` <b>“${escape(h.text)}”</b><small>${escape(h.text_helper)}</small>` : ""}</div><span class="time">${h.latency_ms} ms · ${percent(h.probability)}</span><span class="effect">${h.page_changed ? t("pageChanged") : t("noChange")}${h.via === "dom" ? t("viaNode") : ""}</span></div>`;
 
 async function loadRuns() {
   let runs = [];
@@ -650,6 +724,15 @@ async function showRun(id) {
   $("run-errors").innerHTML = (record.errors || []).length
     ? `<p class="distribution-label">${escape(t("errors"))}</p>${record.errors
         .map((e) => `<div class="drawer-error">${escape(say(e.message))}<small>${escape(when(e.at))}</small></div>`)
+        .join("")}`
+    : "";
+  const steps = record.instructions || [];
+  $("run-errors").innerHTML += steps.length
+    ? `<p class="distribution-label">${escape(t("instructionMeta"))}</p>${steps
+        .map(
+          (item) =>
+            `<div class="trace-row instruction"><span class="number">${String((item.index ?? 0) + 1).padStart(2, "0")}</span><div>${escape(item.text)}<small>${escape(badge(item.status))} · ${escape(t("actions", Math.max(0, (item.to_step || 0) - (item.from_step || 1) + 1)))}</small></div></div>`,
+        )
         .join("")}`
     : "";
   const history = record.history || [];

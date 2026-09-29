@@ -60,6 +60,48 @@ class Agent:
         if state["started_at"] is not None:
             state["elapsed_ms"] = round((time.perf_counter() - state["started_at"]) * 1000)
 
+    def instruct(self, text, *, index, plan):
+        """Continue the same page with another instruction from the user.
+
+        A task is one page plus a list of instructions. Appending one keeps the tab, the trail, and
+        the page, so the next decisions start where the last instruction stopped.
+        """
+        state = self.state
+        state["goal"] = text
+        state["plan"] = list(plan)
+        state["plan_index"] = index
+        state["decision"] = None
+        state["status"] = "ready"
+        state["page"] = self.browser.observe(screenshot=self.screenshots)
+        if state["started_at"] is None:
+            state["started_at"] = time.perf_counter()
+        state["elapsed_ms"] = round((time.perf_counter() - state["started_at"]) * 1000)
+        # The trail marks every instruction boundary, so one task reads as one story.
+        state["history"].append(
+            {
+                "step": len(state["history"]) + 1,
+                "action": text,
+                "kind": "instruction",
+                "choice": None,
+                "probability": 0.0,
+                "confidence": 0.0,
+                "latency_ms": 0,
+                "text": None,
+                "text_helper": None,
+                "text_latency_ms": 0,
+                "operation": "INSTRUCTION",
+                "target": None,
+                "page_changed": None,
+                "via": None,
+                "url": state["page"]["url"],
+                "usage": {},
+                "executed_ms": state["elapsed_ms"],
+                "elapsed_ms": state["elapsed_ms"],
+                "instruction": index,
+            }
+        )
+        return self.snapshot()
+
     def command(self, name, body=None):
         body = body or {}
         state = self.state

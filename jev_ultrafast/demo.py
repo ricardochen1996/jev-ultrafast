@@ -61,6 +61,8 @@ def response_state():
         "text_model": os.environ.get("TEXT_MODEL", "deepseek-chat"),
         "max_steps": MAX_STEPS,
         "run_id": (RUN.get("record") or {}).get("id"),
+        "run_url": RUN.get("url"),
+        "instructions": [item["text"] for item in (RUN.get("record") or {}).get("instructions") or []],
         **({"notice": notice} if notice else {}),
     }
 
@@ -106,6 +108,13 @@ def save_run(force=False):
             RUNS.mkdir(parents=True, exist_ok=True)
             (RUNS / f"{record['id']}.jpg").write_bytes(base64.b64decode(shot))
             record["has_shot"] = True
+    instructions = record.get("instructions") or []
+    if instructions:
+        last = instructions[-1]
+        last["status"] = {"done": "done", "blocked": "blocked", "error": "error"}.get(
+            record.get("status"), last.get("status", "running")
+        )
+        last["to_step"] = record.get("steps", 0)
     if record.get("status") in {"done", "blocked", "error"} and not record.get("finished_at"):
         record["finished_at"] = timestamp()
     RUNS.mkdir(parents=True, exist_ok=True)
@@ -152,23 +161,30 @@ def load_run(name):
     return record
 
 
-def open_run(url, goal, *, reuse, record_dir=None, previous=None):
+def open_run(url, instruction, *, reuse, record_dir=None, previous=None):
     """Start a run, reusing the tab already showing this page when asked to.
 
     ``previous`` continues an attempt whose tab was lost: the run keeps its identity and its trail.
     """
     global AGENT
     close_browser()
-    AGENT = Agent(url, goal, screenshots=True, reuse=reuse, record_dir=record_dir)
+    AGENT = Agent(url, instruction, screenshots=True, reuse=reuse, record_dir=record_dir)
+    plan = list((previous or {}).get("plan") or [instruction])
+    if not previous:
+        plan = [instruction]
+    index = len(plan) - 1 if previous else 0
     run_id = (previous or {}).get("id") or (
         time.strftime("%Y%m%dT%H%M%S", time.localtime()) + "-" + secrets.token_hex(2)
     )
     RUN.clear()
-    RUN.update(url=url, goal=goal, reuse=reuse, saved=0.0, record_dir=record_dir)
+    RUN.update(url=url, goal=instruction, reuse=reuse, saved=0.0, record_dir=record_dir)
     RUN["record"] = {
         "id": run_id,
         "url": url,
-        "goal": goal,
+        "goal": instruction,
+        "plan": plan,
+        "instructions": list((previous or {}).get("instructions") or [])
+        + [{"text": instruction, "index": index, "status": "running", "from_step": 1, "at": timestamp()}],
         "reuse": reuse,
         "status": "running",
         "started_at": (previous or {}).get("started_at") or timestamp(),
@@ -208,15 +224,46 @@ def target_url(body):
     return requested
 
 
+def instruction_text(body, key="instruction"):
+    text = (body.get(key) or body.get("goal") or "").strip()
+    if not text or len(text) > 2000:
+        raise ValueError("Enter 1–2,000 characters")
+    return text
+
+
 def command(name, body):
     global AGENT
-    if name == "reset":
-        goal = body.get("goal", "").strip()
-        if not goal or len(goal) > 2000:
-            raise ValueError("Enter 1–2,000 characters")
+    if name in {"open", "reset"}:
         record_dir = Path.cwd() / "artifacts" / "frames" if body.get("record") else None
         RUN["record_dir"] = record_dir
-        open_run(target_url(body), goal, reuse=bool(body.get("reuse")), record_dir=record_dir)
+        open_run(
+            target_url(body),
+            instruction_text(body),
+            reuse=bool(body.get("reuse")),
+            record_dir=record_dir,
+        )
+    elif name == "instruct":
+        if AGENT is None:
+            raise ValueError("Start a run first")
+        text = instruction_text(body)
+        record = RUN.get("record") or {}
+        instructions = record.setdefault("instructions", [])
+        steps = len(AGENT.state["history"])
+        if instructions:
+            instructions[-1].update(status=instructions[-1].get("status", "done"), to_step=steps)
+        instructions.append(
+            {
+                "text": text,
+                "index": len(instructions),
+                "status": "running",
+                "from_step": steps + 1,
+                "at": timestamp(),
+            }
+        )
+        plan = [item["text"] for item in instructions]
+        AGENT.instruct(text, index=len(plan) - 1, plan=plan)
+        record["goal"] = text
+        save_run(force=True)
     else:
         if AGENT is None:
             raise ValueError("Start a run first")
