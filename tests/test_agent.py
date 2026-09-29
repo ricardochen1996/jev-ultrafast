@@ -423,3 +423,17 @@ def test_the_command_that_finishes_a_run_writes_it_despite_the_rate_limit(tmp_pa
     assert saved["status"] == "done"
     assert saved["instructions"][-1]["status"] == "done"
     assert saved["finished_at"]
+
+
+def test_clearing_a_finished_run_resets_the_console(tmp_path, monkeypatch):
+    from jev_ultrafast import demo
+
+    closed = Mock()
+    monkeypatch.setattr(demo, "AGENT", Mock(close=closed))
+    monkeypatch.setitem(demo.RUN, "record", {"id": "r1"})
+    monkeypatch.setitem(demo.NOTICE, "text", "a stale notice")
+    state = demo.command("clear", {})
+    assert state["status"] == "idle" and state["page"] is None
+    closed.assert_called_once()  # the tab a finished run left behind is closed with it
+    assert demo.RUN == {} and "text" not in demo.NOTICE
+    assert demo.AGENT is None
