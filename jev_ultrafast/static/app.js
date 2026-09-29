@@ -224,6 +224,8 @@ const STRINGS = {
       "Request failed": "请求失败",
       "The model provider is rate limiting this key. Nothing was executed; continue in a moment.":
         "模型服务正在限流这个密钥，未执行任何操作；稍等片刻后继续即可。",
+      "The model provider has no funds for this model on this account. Nothing was executed; use a free model such as jev-1.13-free, or add credit.":
+        "该账户在这个模型上没有余额，未执行任何操作；请改用免费模型（如 jev-1.13-free），或先充值。",
     },
     patterns: [
       [/^Model provider returned HTTP (\d+); no action executed\.$/, (m) => `模型服务返回 HTTP ${m[1]}，未执行任何动作`],

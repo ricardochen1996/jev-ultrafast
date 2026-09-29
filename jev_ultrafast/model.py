@@ -30,7 +30,25 @@ def env_headers(name):
     return headers
 
 
-def post_json(url, key, body, headers=None):
+def post_json(url, key, body, headers=None, fallback=None):
+    """Post one System One request, with a second endpoint for when the first is out of quota.
+
+    A 429 or 402 is the provider refusing this key, not a bad request: another endpoint — a local
+    model, for instance — can answer the same protocol while the quota recovers.
+    """
+    try:
+        return post_once(url, key, body, headers)
+    except QuotaExceeded:
+        if not fallback:
+            raise
+        return post_once(fallback, key, body, headers)
+
+
+class QuotaExceeded(RuntimeError):
+    """The provider refused the request for this key: no balance, or a rate limit."""
+
+
+def post_once(url, key, body, headers=None):
     request_headers = dict(headers or {})
     if key:
         request_headers["Authorization"] = f"Bearer {key}"
@@ -49,8 +67,13 @@ def post_json(url, key, body, headers=None):
         if response.status_code == 429:
             # A quota, not a blip: waiting inside the request would only stall the console, so say
             # what happened and leave the choice to continue with the person watching.
-            raise RuntimeError(
+            raise QuotaExceeded(
                 "The model provider is rate limiting this key. Nothing was executed; continue in a moment."
+            )
+        if response.status_code == 402:
+            raise QuotaExceeded(
+                "The model provider has no funds for this model on this account. Nothing was executed; "
+                "use a free model such as jev-1.13-free, or add credit."
             )
         if response.status_code in {529, 503} and attempt < 2:
             time.sleep(0.5 * 2**attempt)
@@ -176,7 +199,12 @@ def choose(state, goal, history, avoid=(), avoid_labels=()):
     }
     started = time.perf_counter()
     endpoint = os.environ.get("TYPESAFE_BASE_URL", "https://api.typesafe.ai/v1/systemone")
-    result = post_json(endpoint, os.environ.get("TYPESAFE_API_KEY", ""), body)
+    result = post_json(
+        endpoint,
+        os.environ.get("TYPESAFE_API_KEY", ""),
+        body,
+        fallback=os.environ.get("TYPESAFE_FALLBACK_URL") or None,
+    )
     operation_answer = validate_choice(result["answers"].get("operation", {}), operations)
     operation = operation_answer["choice"]
     target = None
