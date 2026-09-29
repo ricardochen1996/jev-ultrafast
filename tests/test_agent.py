@@ -544,3 +544,20 @@ def test_a_paid_model_without_funds_is_reported_as_a_quota_problem(monkeypatch):
     monkeypatch.setattr(model.CLIENT, "post", Mock(return_value=response))
     with pytest.raises(model.QuotaExceeded, match="no funds for this model"):
         model.post_once("https://zen", "k", {})
+
+
+def test_a_quota_refusal_is_remembered_so_the_next_decision_skips_the_primary(monkeypatch):
+    """A rate-limited endpoint answers slowly; after one refusal the fallback goes first."""
+
+    def post_once(url, key, body, headers=None):
+        calls.append(url)
+        if url == "https://primary":
+            raise model.QuotaExceeded("no funds")
+        return {"model": "local", "answers": {}}
+
+    calls = []
+    monkeypatch.setattr(model, "post_once", post_once)
+    monkeypatch.setattr(model, "quota_until", 0.0)
+    model.post_json("https://primary", "k", {}, fallback="https://local")
+    model.post_json("https://primary", "k", {}, fallback="https://local")
+    assert calls == ["https://primary", "https://local", "https://local"]
