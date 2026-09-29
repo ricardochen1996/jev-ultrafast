@@ -199,13 +199,6 @@ a:focus-visible {
 .primary span {
   padding-left: 20px;
 }
-.toolbar {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: center;
-  padding: 22px 0 14px;
-}
 .status {
   display: flex;
   align-items: center;
@@ -321,6 +314,10 @@ a:focus-visible {
     10px ui-monospace,
     monospace;
   color: #818577;
+}
+#targets {
+  position: absolute;
+  pointer-events: none;
 }
 .target {
   position: absolute;
@@ -589,9 +586,6 @@ footer {
   .overlay-control {
     display: none;
   }
-  .toolbar {
-    align-items: start;
-  }
   .local {
     display: none;
   }
@@ -626,10 +620,6 @@ footer {
   }
   #goal {
     font-size: 16px;
-  }
-  .toolbar {
-    flex-direction: column;
-    align-items: stretch;
   }
   .controls {
     gap: 8px;
@@ -739,7 +729,7 @@ textarea:focus-visible {
   }
 }
 
-.operation-choices{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0}.operation-choice{font-size:10px;padding:5px 7px;border:1px solid #dbe2d4;border-radius:5px;color:#687260}.operation-choice.best{color:#185c3b;background:#eef6e5;border-color:#88ac79}
+.operation-choices{display:flex;flex-wrap:wrap;gap:6px;margin:14px 20px}.operation-choice{font-size:10px;padding:5px 7px;border:1px solid #dbe2d4;border-radius:5px;color:#687260}.operation-choice.best{color:#185c3b;background:#eef6e5;border-color:#88ac79}
 
 /* Runs: the record of what this machine has already tried. */
 .runs {
@@ -747,8 +737,8 @@ textarea:focus-visible {
 }
 .run-row {
   display: grid;
-  grid-template-columns: 74px minmax(0, 1fr) 132px 86px;
-  gap: 16px;
+  grid-template-columns: 68px minmax(0, 1fr) auto 84px 62px;
+  gap: 14px;
   align-items: center;
   border-bottom: 1px solid var(--line);
   padding: 12px 0;
@@ -768,12 +758,10 @@ textarea:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.run-row .run-main small,
-.run-row .run-meta,
+.run-row .run-stats,
 .run-row .run-time {
-  font:
-    11px ui-monospace,
-    monospace;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
   color: #8d9186;
   text-align: right;
   white-space: nowrap;
@@ -781,16 +769,20 @@ textarea:focus-visible {
 .run-row .run-main small {
   display: block;
   margin-top: 3px;
+  font-size: 12px;
+  color: #6f7368;
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .badge {
-  font:
-    10px ui-monospace,
-    monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 14px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 3px 8px;
@@ -809,7 +801,8 @@ textarea:focus-visible {
   border-color: rgb(163 58 42 / 0.3);
   background: rgb(163 58 42 / 0.06);
 }
-.badge.running {
+.badge.running,
+.badge.predicted {
   color: #8a6a1f;
   border-color: rgb(138 106 31 / 0.3);
   background: rgb(138 106 31 / 0.07);
@@ -926,7 +919,7 @@ main {
   padding: 0 22px 14px;
   display: grid;
   /* Fixed rows, placed explicitly: a hidden error bar must not shift every panel up a row. */
-  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   gap: 10px;
 }
 .topbar {
@@ -971,24 +964,11 @@ main {
   min-height: 44px;
   max-height: 96px;
 }
-.command-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-}
-.toolbar {
-  grid-row: 3;
-  border: 0;
-  padding: 0;
-  display: flex;
-  justify-content: flex-end;
-}
 #error {
-  grid-row: 4;
+  grid-row: 3;
 }
 .workspace {
-  grid-row: 5;
+  grid-row: 4;
   min-height: 0;
   align-items: stretch;
 }
@@ -1018,12 +998,13 @@ aside {
   overflow-y: auto;
 }
 .bottom {
-  grid-row: 6;
+  grid-row: 5;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 22px;
-  max-height: 34vh;
-  min-height: 118px;
+  /* A fixed height: unfolding the run list must not squeeze the live preview above it. */
+  height: 26vh;
+  min-height: 150px;
 }
 .bottom > * {
   min-height: 0;
@@ -1097,11 +1078,6 @@ aside {
   .command {
     grid-template-columns: minmax(0, 1fr);
   }
-  .command-actions {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-  }
 }
 
 /* Address and goal share a baseline: same box, same padding, same line box. */
@@ -1119,47 +1095,45 @@ aside {
   resize: none;
   overflow: auto;
 }
-.command-actions {
-  align-self: start;
-}
-#lang {
+/* Language: a two-way switch, the current one filled like a pressed key. */
+.lang {
+  display: inline-flex;
+  position: relative;
+  padding: 2px;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: white;
-  color: #494b43;
+  border-radius: 999px;
+  background: #f1f2ec;
+}
+.lang button {
+  min-height: 0;
+  width: 36px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #8d9186;
   font-size: 12px;
-  padding: 4px 6px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
   cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    box-shadow 0.15s;
+}
+.lang button:hover:not([aria-checked="true"]) {
+  color: #3c3e37;
+  background: transparent;
+}
+.lang button[aria-checked="true"] {
+  background: white;
+  color: #1d1f1a;
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.08),
+    0 0 0 1px rgb(0 0 0 / 0.04);
 }
 
-/* The instruction bar keeps the toolbar useful once a task is open. */
-.toolbar {
-  justify-content: space-between;
-  align-items: center;
-  gap: 14px;
-}
-.instruction-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
-}
-.instruction-bar[hidden] {
-  display: none;
-}
-.instruction-bar input {
-  flex: 1;
-  min-width: 0;
-  height: 34px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: white;
-  padding: 0 10px;
-  font: inherit;
-  font-size: 12px;
-  color: #343530;
-}
 /* An instruction boundary reads as a divider inside one task trail. */
 .trace-row.instruction {
   grid-template-columns: 32px 1fr;
@@ -1170,4 +1144,164 @@ aside {
 }
 .trace-row.instruction div {
   font-weight: 600;
+}
+
+/* One command row: numbered steps over address, goal, and a single icon button. */
+.command {
+  align-items: center;
+  row-gap: 6px;
+}
+.step {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #a2a59a;
+}
+.step b {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  font:
+    600 10px ui-monospace,
+    monospace;
+}
+.step i {
+  display: inline-flex;
+}
+.step.current {
+  color: #1d1f1a;
+}
+.step.current b {
+  background: #1d1f1a;
+  border-color: #1d1f1a;
+  color: white;
+}
+.step.done {
+  color: var(--green);
+}
+.step.done b {
+  font-size: 0;
+  background: var(--green);
+  border-color: var(--green);
+  color: white;
+}
+.step.done b::after {
+  content: "✓";
+  font-size: 10px;
+}
+.step.active {
+  color: #a33a2a;
+}
+#step-run {
+  justify-content: flex-end;
+}
+i[data-icon] {
+  display: inline-flex;
+  font-style: normal;
+}
+button.icon {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  width: 46px;
+  min-height: 46px;
+}
+button.icon.small {
+  width: 28px;
+  min-height: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+button.icon.small.danger:hover:not(:disabled) {
+  color: #a33a2a;
+  border-color: rgb(163 58 42 / 0.4);
+}
+.command #start {
+  width: 52px;
+}
+.command #start svg {
+  width: 18px;
+  height: 18px;
+}
+.command #start.stopping {
+  background: #a33a2a;
+}
+.command #start.stopping:hover {
+  background: #86301f;
+}
+.command-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.command-actions button[hidden] {
+  display: none;
+}
+/* Settings are icon toggles: lit when on, and the tooltip says what they do. */
+.toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: #a2a59a;
+  background: white;
+  cursor: pointer;
+}
+.toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.toggle:has(input:checked) {
+  color: var(--green);
+  border-color: rgb(23 103 67 / 0.35);
+  background: rgb(23 103 67 / 0.06);
+}
+.toggle:has(input:disabled) {
+  opacity: 0.5;
+  cursor: default;
+}
+.toggle:has(input:focus-visible) {
+  outline: 2px solid var(--green);
+  outline-offset: 1px;
+}
+.drawer-actions,
+.run-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+@media (max-width: 1100px) {
+  .step {
+    display: none;
+  }
+}
+.drawer-actions button.icon {
+  width: 36px;
+  min-height: 36px;
+}
+
+/* Labels share the page's sans face; monospace stays for ids, scores, and raw payloads only.
+   Mixed with Chinese text, monospace captions sat on a different baseline and width. */
+.eyebrow,
+.aside-header > span,
+.trace-heading span,
+.trace-title span,
+.drawer-sub span,
+.run-meta span,
+.topbar-right,
+.browser-bar > span:nth-child(2),
+.browser-footer {
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
 }

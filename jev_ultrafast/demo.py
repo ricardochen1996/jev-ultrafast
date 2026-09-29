@@ -29,6 +29,8 @@ RUNS = Path.cwd() / "artifacts" / "runs"
 SNAPSHOT_FIELDS = (
     "id",
     "url",
+    "start_url",
+    "plan",
     "title",
     "goal",
     "status",
@@ -86,7 +88,9 @@ def save_run(force=False):
     record = RUN.get("record")
     if not record:
         return
-    finished = record.get("status") in {"done", "blocked", "error"}
+    # The run's own status decides, not the stored one: the command that finishes a run must write it.
+    status = AGENT.state.get("status") if AGENT else record.get("status")
+    finished = record.get("status") == "error" or status in {"done", "blocked", "error"}
     if not force and not finished and time.monotonic() - RUN.get("saved", 0.0) < 2:
         return
     if AGENT:
@@ -145,6 +149,7 @@ def list_runs():
             record = json.loads(path.read_text())
         except (OSError, ValueError):
             continue
+        record["start_url"] = start_url(record)
         runs.append({key: record.get(key) for key in SNAPSHOT_FIELDS})
     runs.sort(key=lambda run: run.get("started_at") or "", reverse=True)
     return runs
@@ -158,7 +163,24 @@ def load_run(name):
         raise ValueError("Unknown run")
     record = json.loads(path.read_text())
     record["errors"] = record.get("errors") or []
+    record["start_url"] = start_url(record)
     return record
+
+
+def start_url(record):
+    """Where a replay begins. Records from before ``start_url`` fall back to the first acted page."""
+    first = (record.get("history") or [{}])[0]
+    return record.get("start_url") or first.get("url") or record.get("url", "")
+
+
+def delete_run(name):
+    """Remove a stored run; the current run stops being recorded if it is the one removed."""
+    load_run(name)
+    for suffix in (".json", ".jpg"):
+        (RUNS / f"{name}{suffix}").unlink(missing_ok=True)
+    if (RUN.get("record") or {}).get("id") == name:
+        RUN["record"] = None
+    return {"deleted": name}
 
 
 def open_run(url, instruction, *, reuse, record_dir=None, previous=None):
@@ -181,6 +203,7 @@ def open_run(url, instruction, *, reuse, record_dir=None, previous=None):
     RUN["record"] = {
         "id": run_id,
         "url": url,
+        "start_url": (previous or {}).get("start_url") or url,
         "goal": instruction,
         "plan": plan,
         "instructions": list((previous or {}).get("instructions") or [])
@@ -233,6 +256,8 @@ def instruction_text(body, key="instruction"):
 
 def command(name, body):
     global AGENT
+    if name.startswith("runs/") and name.endswith("/delete"):
+        return delete_run(name.removeprefix("runs/").removesuffix("/delete"))
     if name in {"open", "reset"}:
         record_dir = Path.cwd() / "artifacts" / "frames" if body.get("record") else None
         RUN["record_dir"] = record_dir
@@ -263,6 +288,7 @@ def command(name, body):
         plan = [item["text"] for item in instructions]
         AGENT.instruct(text, index=len(plan) - 1, plan=plan)
         record["goal"] = text
+        record["plan"] = plan
         save_run(force=True)
     else:
         if AGENT is None:
@@ -373,7 +399,7 @@ def main():
     load_environment()
     atexit.register(close_browser)
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    print(f"Jev Ultrafast: {ORIGIN}", flush=True)
+    print(f"Browser Ultrafast: {ORIGIN}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

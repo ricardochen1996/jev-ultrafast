@@ -130,7 +130,7 @@ def action_space(actions):
     return elements, targets, controls
 
 
-def choose(state, goal, history):
+def choose(state, goal, history, avoid=()):
     elements, targets, controls = action_space(state["actions"])
     labels = {
         "CLICK": "Click an element, button, menu option, autocomplete suggestion, or calendar day.",
@@ -176,7 +176,7 @@ def choose(state, goal, history):
     target = None
     target_answer = None
     probabilities = {}
-    repeats = noop_repeats(history)
+    repeats = noop_repeats(history) | set(avoid)
     skipped = []
 
     def fresh_head(name):

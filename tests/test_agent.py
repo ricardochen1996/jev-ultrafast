@@ -318,3 +318,108 @@ def test_navigation_during_prediction_reobserves_without_action(runner):
     assert runner.state["status"] == "ready"
     assert runner.state["decision"] is None
     runner.state["browser"].act.assert_not_called()
+
+
+def click_decision(target="2", action="e3"):
+    return {**decision(action), "operation": "CLICK", "target": target}
+
+
+def test_refused_target_is_avoided_on_the_unchanged_page(runner, monkeypatch):
+    runner.state["decision"] = click_decision()
+    runner.state["browser"].act.side_effect = StalePage("Target changed or is covered. Observe again.")
+    with pytest.raises(StalePage):
+        runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    chosen = Mock(return_value=click_decision())
+    monkeypatch.setattr(loop, "choose", chosen)
+    runner.state["status"] = "ready"
+    runner.command("predict")
+    assert chosen.call_args.kwargs["avoid"] == {("CLICK", "2")}
+
+
+def test_repeatedly_refused_targets_stop_instead_of_spinning(runner, monkeypatch):
+    fp = runner.state["page"]["fingerprint"]
+    runner.state["unreachable"] = [("CLICK", str(i), fp) for i in range(loop.UNREACHABLE_LIMIT)]
+    chosen = Mock()
+    monkeypatch.setattr(loop, "choose", chosen)
+    runner.state["status"] = "ready"
+    with pytest.raises(ValueError, match="could not be reached"):
+        runner.command("predict")
+    chosen.assert_not_called()
+    assert runner.state["status"] == "blocked"
+
+
+def test_avoided_target_falls_back_to_next_best_candidate(monkeypatch):
+    def post(_url, _key, body):
+        return {
+            "model": "test",
+            "answers": {
+                "operation": choice(body["questions"]["operation"]["criteria"], "CLICK"),
+                "click_target": {"choice": "1", "confidence": 1.0, "probabilities": {"1": 0.7, "2": 0.3}},
+                "type_text_target": choice(["1"], "1"),
+            },
+        }
+
+    monkeypatch.setattr(model, "post_json", post)
+    d = model.choose(page(), "Go", [], avoid={("CLICK", "1")})
+    assert d["target"] == "2" and d["choice"] == "e3"
+
+
+def test_only_a_tab_opened_by_the_driven_tab_is_followed(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    targets = [
+        {"targetId": "mine", "type": "page"},
+        {"targetId": "other", "type": "page", "openerId": "someone-else"},
+        {"targetId": "popup", "type": "page", "openerId": "mine"},
+    ]
+    calls = []
+
+    def cdp(method, **params):
+        calls.append((method, params))
+        return {"targetInfos": targets} if method == "Target.getTargets" else {"sessionId": "s2"}
+
+    monkeypatch.setattr(browser, "cdp", cdp)
+    b = browser.Browser.__new__(browser.Browser)
+    b.target, b.session, b.owned, b.known_targets = "mine", "s1", False, {"mine"}
+    b.evaluate = Mock(side_effect=[True, 5, True, 5, True, 5])
+    b.follow_opened_tab()
+    assert b.target == "popup" and b.session == "s2"
+    assert ("Target.closeTarget", {"targetId": "mine"}) not in calls  # never close the user's own tab
+    b.follow_opened_tab()  # consumed: a second observation does not switch again
+    assert b.target == "popup"
+
+
+def test_run_records_can_be_deleted_and_replayed_from_their_first_page(tmp_path, monkeypatch):
+    from jev_ultrafast import demo
+
+    monkeypatch.setattr(demo, "RUNS", tmp_path)
+    legacy = {"id": "20260101T000000-abcd", "url": "https://example.com/result", "plan": ["a", "b"],
+              "history": [{"url": "https://example.com/"}]}
+    (tmp_path / f"{legacy['id']}.json").write_text(json.dumps(legacy))
+    (tmp_path / f"{legacy['id']}.jpg").write_bytes(b"x")
+    [summary] = demo.list_runs()
+    assert summary["start_url"] == "https://example.com/"
+    assert summary["plan"] == ["a", "b"]
+
+    monkeypatch.setitem(demo.RUN, "record", {"id": legacy["id"]})
+    assert demo.command(f"runs/{legacy['id']}/delete", {}) == {"deleted": legacy["id"]}
+    assert not list(tmp_path.iterdir())
+    assert demo.RUN["record"] is None
+    with pytest.raises(ValueError):
+        demo.command("runs/../x/delete", {})
+
+
+def test_the_command_that_finishes_a_run_writes_it_despite_the_rate_limit(tmp_path, monkeypatch):
+    from jev_ultrafast import demo
+
+    state = {"status": "done", "history": [{"url": "https://example.com/"}], "page": {"url": "https://example.com/"}}
+    fake = Mock(state=state, snapshot=Mock(return_value=state))
+    monkeypatch.setattr(demo, "RUNS", tmp_path)
+    monkeypatch.setattr(demo, "AGENT", fake)
+    monkeypatch.setitem(demo.RUN, "saved", time.monotonic())
+    monkeypatch.setitem(demo.RUN, "record", {"id": "r1", "status": "ready", "instructions": [{"text": "a"}]})
+    demo.save_run()
+    saved = json.loads((tmp_path / "r1.json").read_text())
+    assert saved["status"] == "done"
+    assert saved["instructions"][-1]["status"] == "done"
+    assert saved["finished_at"]
