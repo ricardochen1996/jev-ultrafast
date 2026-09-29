@@ -45,7 +45,7 @@ def decision(action="e1"):
     }
 
 
-@pytest.mark.parametrize("mutation", ["unknown", "nan", "missing", "negative", "non_max", "confidence"])
+@pytest.mark.parametrize("mutation", ["unknown", "nan", "negative", "non_max", "confidence"])
 def test_invalid_choice_is_rejected(mutation):
     a = choice(["a", "b"], "a")
     if mutation == "unknown":
@@ -621,3 +621,43 @@ def test_a_field_the_text_helper_refuses_is_left_alone(runner, monkeypatch):
     state["status"] = "ready"
     runner.command("predict")
     assert chosen.call_args.kwargs["avoid_labels"] == {("TYPE_TEXT", "Search")}
+
+
+def test_a_sparse_distribution_is_read_as_zeroes_for_the_candidates_it_omits():
+    """Jev names only the candidates it weighed; the rest are what it did not consider."""
+    answer = {
+        "choice": "2",
+        "confidence": 0.7,
+        "probabilities": {"2": 0.7, "3": 0.3},
+    }
+    checked = model.validate_choice(answer, {"1": {}, "2": {}, "3": {}})
+    assert checked["probabilities"] == {"2": 0.7, "3": 0.3, "1": 0}
+    assert sum(checked["probabilities"].values()) == 1
+
+
+def test_a_sparse_distribution_is_still_checked():
+    answer = {"choice": "1", "confidence": 0.7, "probabilities": {"2": 0.7, "1": 0.3}}
+    with pytest.raises(ValueError, match="Invalid TypeSafe response"):
+        model.validate_choice(answer, {"1": {}, "2": {}})
+
+
+def test_an_unreadable_answer_is_asked_for_once_more(monkeypatch):
+    calls = []
+    good = {
+        "model": "test",
+        "answers": {
+            "operation": {"choice": "CLICK", "confidence": 1.0, "probabilities": {"CLICK": 1.0}},
+            "click_target": {"choice": "2", "confidence": 1.0, "probabilities": {"2": 1.0}},
+        },
+    }
+
+    def post_json(_url, _key, _body, fallback=None):
+        calls.append(1)
+        if len(calls) == 1:
+            return {"answers": {"operation": {"choice": "CLICK", "probabilities": {}}}}
+        return good
+
+    monkeypatch.setattr(model, "post_json", post_json)
+    decided = model.choose(page(), "Go", [])
+    assert len(calls) == 2
+    assert decided["operation"] == "CLICK"

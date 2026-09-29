@@ -96,8 +96,19 @@ def post_once(url, key, body, headers=None):
 
 
 def validate_choice(answer, ids):
+    """One head's answer, with candidates the model left out read as zero.
+
+    A distribution that names only some of the candidates still ranks the ones it names, and the
+    omitted ones are what it did not consider. Everything that contradicts itself — a choice
+    outside the list, numbers out of range or not finite, a total far from one, a winner that is
+    not the winner — is still refused.
+    """
     try:
-        probabilities = answer["probabilities"]
+        probabilities = dict(answer["probabilities"])
+        left_out = [key for key in ids if key not in probabilities]
+        if left_out and not [key for key in probabilities if key not in ids]:
+            probabilities.update(dict.fromkeys(left_out, 0))
+            answer = {**answer, "probabilities": probabilities}
         numbers = [*probabilities.values(), answer["confidence"]]
         valid = (
             answer["choice"] in ids
@@ -210,12 +221,31 @@ def choose(state, goal, history, avoid=(), avoid_labels=()):
     }
     started = time.perf_counter()
     endpoint = os.environ.get("TYPESAFE_BASE_URL", "https://api.typesafe.ai/v1/systemone")
-    result = post_json(
-        endpoint,
-        os.environ.get("TYPESAFE_API_KEY", ""),
-        body,
-        fallback=os.environ.get("TYPESAFE_FALLBACK_URL") or None,
-    )
+    def request():
+        """One request whose operation and matching target can be read, and nothing else.
+
+        Only the operation the model chose is consumed, so only its head is read here: an answer
+        about an operation that will not run is beside the point, and rejecting it would throw away
+        a usable decision.
+        """
+        payload = post_json(
+            endpoint,
+            os.environ.get("TYPESAFE_API_KEY", ""),
+            body,
+            fallback=os.environ.get("TYPESAFE_FALLBACK_URL") or None,
+        )
+        answers = payload.get("answers", {})
+        chosen = validate_choice(answers.get("operation", {}), operations)["choice"]
+        if chosen in targets:
+            validate_choice(answers.get(chosen.lower() + "_target", {}), targets[chosen])
+        return payload
+
+    try:
+        result = request()
+    except (KeyError, ValueError):
+        # An answer that cannot be read says nothing about the page, so it is asked for once more
+        # rather than reported as a failed step.
+        result = request()
     operation_answer = validate_choice(result["answers"].get("operation", {}), operations)
     operation = operation_answer["choice"]
     target = None
