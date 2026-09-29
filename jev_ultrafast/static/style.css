@@ -1261,6 +1261,15 @@ button.icon.small.danger:hover:not(:disabled) {
   opacity: 0;
   pointer-events: none;
 }
+.toggle.small {
+  width: 26px;
+  height: 26px;
+  margin-right: -12px;
+}
+.toggle.small svg {
+  width: 14px;
+  height: 14px;
+}
 .toggle:has(input:checked) {
   color: var(--green);
   border-color: rgb(23 103 67 / 0.35);

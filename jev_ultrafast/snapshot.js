@@ -162,6 +162,29 @@
   // While the popup is open they are the only way to pick a value, so they are offered as targets.
   // Only rows inside a floating container count: the same class names appear in fixed page chrome.
   const closable=/(^|[-_])(close|clear|remove|dismiss)([-_]|$)/i, taken=new Set(actions.map(a=>a.node));
+  // Rows a component library draws as plain elements: a menu item, a list row, a card. They carry no
+  // role, no tabindex and no href, so nothing above finds them, yet a person clicks them all day.
+  const rows=[];
+  for (const e of document.querySelectorAll('div,li,span')) {
+    if (actions.length + rows.length > 200) break;
+    const label=(e.innerText||'').replace(/\s+/g,' ').trim();
+    if (label.length<2 || label.length>40) continue;
+    if (e.querySelector('a[href],button,input,select,textarea,[role],[tabindex="0"]')) continue;
+    if (!safe(e) || !visible(e)) continue;
+    if (getComputedStyle(e).cursor!=='pointer') continue;
+    const node=identity(e);
+    if (taken.has(node)) continue;
+    const r=e.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2;
+    if (r.width<40 || r.height<16 || x<0 || y<0 || x>=innerWidth || y>=innerHeight) continue;
+    // A row is wrapped in several clickable boxes, and a card holds clickable text; keep the
+    // outermost box, which is what a person aims at, and drop everything it contains.
+    if (rows.some(o => o.rect.x<=r.x+2 && o.rect.y<=r.y+2 &&
+        o.rect.x+o.rect.w>=r.x+r.width-2 && o.rect.y+o.rect.h>=r.y+r.height-2)) continue;
+    taken.add(node);
+    rows.push({node, role:'button', kind:'click', value:'', label,
+      rect:{x:r.x,y:r.y,w:r.width,h:r.height}});
+  }
+  actions.push(...rows);
   const optionish='[class*="option"],[class*="menuitem"],[class*="menu-item"]';
   const floating = e => {
     for (let p=e.parentElement, hops=0; p && hops<6; p=p.parentElement, hops++) {

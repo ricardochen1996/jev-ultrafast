@@ -437,3 +437,69 @@ def test_clearing_a_finished_run_resets_the_console(tmp_path, monkeypatch):
     closed.assert_called_once()  # the tab a finished run left behind is closed with it
     assert demo.RUN == {} and "text" not in demo.NOTICE
     assert demo.AGENT is None
+
+
+def test_a_clickable_label_can_be_avoided(monkeypatch):
+    """A looping label is skipped by name, because a reload renumbers the same control."""
+
+    def post(_url, _key, body):
+        return {
+            "model": "test",
+            "answers": {
+                "operation": choice(body["questions"]["operation"]["criteria"], "CLICK"),
+                "click_target": {"choice": "1", "confidence": 1.0, "probabilities": {"1": 0.7, "2": 0.3}},
+                "type_text_target": choice(["1"], "1"),
+            },
+        }
+
+    monkeypatch.setattr(model, "post_json", post)
+    decided = model.choose(page(), "Go", [], avoid_labels={("CLICK", "Open Search")})
+    assert decided["target"] == "2" and decided["choice"] == "e3"
+
+
+def test_controls_signature_ignores_scrolling():
+    from jev_ultrafast.agent import controls_signature
+
+    page_a = {"actions": [{"label": "Home", "kind": "click"}, {"label": "Scroll down", "kind": "scroll"}]}
+    page_b = {"actions": [{"label": "Home", "kind": "click"}, {"label": "Wait for the page to update", "kind": "wait"}]}
+    assert controls_signature(page_a) == controls_signature(page_b) == ("Home",)
+
+
+def test_repeating_an_action_over_the_same_controls_is_recorded_as_a_loop(runner, monkeypatch):
+    """Clicking the link you are on reloads the page: changed=True, same controls, no progress."""
+    state = runner.state
+    state["status"] = "ready"
+    state["loops"] = []
+    state["decision"] = {**decision("e2"), "operation": "CLICK", "target": "2"}
+    same = page()  # the reload hands back exactly the same controls
+    state["browser"].observe = Mock(return_value=same)
+    state["history"] = [
+        {
+            "step": 1,
+            "action": "Open Search",
+            "kind": "click",
+            "page_changed": True,
+            "probability": 0.6,
+            "latency_ms": 10,
+        },
+    ]
+    runner.command("act", {"fingerprint": state["page"]["fingerprint"]})
+    assert state["loops"] == [("CLICK", "Open Search")]
+
+    chosen = Mock(return_value={**decision("e3"), "operation": "CLICK", "target": "2"})
+    monkeypatch.setattr(loop, "choose", chosen)
+    state["status"] = "ready"
+    runner.command("predict")
+    assert chosen.call_args.kwargs["avoid_labels"] == {("CLICK", "Open Search")}
+
+
+def test_a_page_that_keeps_looping_stops_instead_of_spending_the_budget(runner, monkeypatch):
+    state = runner.state
+    state["loops"] = [("CLICK", f"Step {i}") for i in range(loop.LOOP_LIMIT)]
+    state["status"] = "ready"
+    chosen = Mock()
+    monkeypatch.setattr(loop, "choose", chosen)
+    with pytest.raises(ValueError, match="kept changing nothing"):
+        runner.command("predict")
+    chosen.assert_not_called()
+    assert state["status"] == "blocked"

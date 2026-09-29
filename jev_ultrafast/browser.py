@@ -12,6 +12,10 @@ from browser_harness.helpers import cdp
 # Atomically read visible content and controls, preserving actual DOM node identity.
 READ_STATE = Path(__file__).with_name("snapshot.js").read_text()
 MARKER = f"(() => {{ const state={READ_STATE}; return state?.marker ?? null; }})()"
+# Component libraries paint their controls after readyState completes. Looking too soon is how a
+# page reports a menu of one item, so a run gives the page a moment before it looks.
+FIRST_LOOK_PAUSE = 2.0
+
 # Count of actions the current page would offer. Cheap enough to poll while a page assembles.
 ACTION_COUNT = f"(() => {{ const state={READ_STATE}; return state ? state.actions.length : 0; }})()"
 
@@ -111,8 +115,9 @@ class Browser:
                     break
                 time.sleep(0.02)
         # readyState completes before a single-page app has rendered its controls, and a shell can
-        # render its chrome first. Wait until the offered action table stops growing, bounded, so
-        # the first decision is made against the page the user can already see.
+        # render its chrome first. Give the page a moment, then wait until the offered action table
+        # stops growing, bounded, so the first decision is made against the page the user can see.
+        time.sleep(FIRST_LOOK_PAUSE)
         deadline = time.monotonic() + 20
         previous, stable = -1, 0
         while time.monotonic() < deadline:
@@ -123,7 +128,9 @@ class Browser:
                 count = previous + 1 if previous >= 0 else 0
             stable = stable + 1 if count == previous else 0
             previous = count
-            if stable >= 2 and count > 2:
+            # Any settled page is ready, however few actions it offers: a menu of one item is a page
+            # too, and waiting for a larger count only spent the whole deadline.
+            if stable >= 2 and count >= 1:
                 break
             time.sleep(0.3)
 
