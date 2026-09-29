@@ -46,7 +46,13 @@ def post_json(url, key, body, headers=None):
             raise RuntimeError(
                 f"Model connection failed ({type(error).__name__}); no action executed."
             ) from None
-        if response.status_code in {429, 529, 503} and attempt < 2:
+        if response.status_code == 429:
+            # A quota, not a blip: waiting inside the request would only stall the console, so say
+            # what happened and leave the choice to continue with the person watching.
+            raise RuntimeError(
+                "The model provider is rate limiting this key. Nothing was executed; continue in a moment."
+            )
+        if response.status_code in {529, 503} and attempt < 2:
             time.sleep(0.5 * 2**attempt)
             continue
         if response.is_error:
@@ -130,7 +136,7 @@ def action_space(actions):
     return elements, targets, controls
 
 
-def choose(state, goal, history, avoid=()):
+def choose(state, goal, history, avoid=(), avoid_labels=()):
     elements, targets, controls = action_space(state["actions"])
     labels = {
         "CLICK": "Click an element, button, menu option, autocomplete suggestion, or calendar day.",
@@ -177,6 +183,7 @@ def choose(state, goal, history, avoid=()):
     target_answer = None
     probabilities = {}
     repeats = noop_repeats(history) | set(avoid)
+    looping = set(avoid_labels)
     skipped = []
 
     def fresh_head(name):
@@ -186,7 +193,16 @@ def choose(state, goal, history, avoid=()):
             return None, None, []
         answer = validate_choice(result["answers"].get(name.lower() + "_target", {}), candidates)
         order, dropped = ranked(answer["probabilities"], name, repeats)
-        viable = [index for index in order if (name, str(index)) not in repeats]
+
+        def loops_here(index):
+            # Matched by label: a reload can renumber the same control.
+            label = candidates[index]["label"]
+            return any(
+                name == operation and (action == label or action.startswith(label + " -> "))
+                for operation, action in looping
+            )
+
+        viable = [index for index in order if (name, str(index)) not in repeats and not loops_here(index)]
         return answer, (viable[0] if viable else None), dropped
 
     target_answer, best, dropped = fresh_head(operation)

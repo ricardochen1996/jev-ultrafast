@@ -222,6 +222,8 @@ const STRINGS = {
       "The chosen targets could not be reached on this page. Stopped instead of retrying.":
         "选中的目标在当前页面上无法点到，已停止而不是反复重试；可以换个说法输入下一条指令",
       "Request failed": "请求失败",
+      "The model provider is rate limiting this key. Nothing was executed; continue in a moment.":
+        "模型服务正在限流这个密钥，未执行任何操作；稍等片刻后继续即可。",
     },
     patterns: [
       [/^Model provider returned HTTP (\d+); no action executed\.$/, (m) => `模型服务返回 HTTP ${m[1]}，未执行任何动作`],

@@ -41,9 +41,6 @@
           aria-label="Task goal"
         ></textarea>
         <div class="command-actions">
-          <label class="toggle" id="overlays-toggle" title="Target boxes"
-            ><input name="overlays" id="overlays" type="checkbox" checked /><i data-icon="boxes"></i
-          ></label>
           <button type="button" id="new-task" class="icon" hidden><i data-icon="plus"></i></button>
           <button type="submit" id="start" class="primary icon"><i id="start-icon" data-icon="play"></i></button>
         </div>
@@ -53,7 +50,10 @@
         <div class="browser-panel">
           <div class="browser-bar">
             <div class="traffic"><b></b><b></b><b></b></div>
-            <span id="url">Local demo browser</span><span class="live">LIVE</span>
+            <span id="url">Local demo browser</span
+            ><label class="toggle small" id="overlays-toggle" title="Target boxes"
+              ><input id="overlays" type="checkbox" checked /><i data-icon="boxes"></i></label
+            ><span class="live">LIVE</span>
           </div>
           <div class="viewport" id="viewport">
             <div class="empty" id="empty">

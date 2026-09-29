@@ -10,6 +10,27 @@ from .questions import MAX_STEPS, PROBE_SCROLLS
 
 # Distinct targets the executor may refuse on one unchanged page before the run stops.
 UNREACHABLE_LIMIT = 3
+# Distinct actions that repeated while the same controls stayed on screen before the run stops.
+LOOP_LIMIT = 3
+# Repeating an action this many times over an unchanged set of controls is a loop, not progress.
+LOOP_REPEATS = 2
+
+
+def controls_signature(page):
+    """What the page offers, ignoring scrolling and waiting.
+
+    Clicking the link you are already on reloads the page: the state has genuinely changed, so a
+    no-op check never sees it, but the controls on screen are exactly the same.
+    """
+    return tuple(
+        sorted(
+            {
+                action["label"]
+                for action in page["actions"]
+                if action.get("kind") not in {"scroll", "wait"} and action.get("label")
+            }
+        )
+    )
 
 
 class Agent:
@@ -44,6 +65,7 @@ class Agent:
             probe_scrolls=0,
             blocked_dones=0,
             unreachable=[],
+            loops=[],
         )
         if self.record_dir:
             self.record_dir.mkdir(parents=True, exist_ok=True)
@@ -77,6 +99,7 @@ class Agent:
         state["decision"] = None
         state["status"] = "ready"
         state["unreachable"] = []
+        state["loops"] = []
         state["page"] = self.browser.observe(screenshot=self.screenshots)
         if state["started_at"] is None:
             state["started_at"] = time.perf_counter()
@@ -139,7 +162,13 @@ class Agent:
             if len(avoid) >= UNREACHABLE_LIMIT:
                 state["status"] = "blocked"
                 raise ValueError("The chosen targets could not be reached on this page. Stopped instead of retrying.")
-            state["decision"] = choose(state["page"], state["goal"], state["history"], avoid=avoid)
+            looping = {pair for pair in state.get("loops", [])}
+            if len(looping) >= LOOP_LIMIT:
+                state["status"] = "blocked"
+                raise ValueError("The same actions kept changing nothing on screen. Stopped instead of looping.")
+            state["decision"] = choose(
+                state["page"], state["goal"], state["history"], avoid=avoid, avoid_labels=looping
+            )
             state["decisions"].append(
                 {
                     **state["decision"],
@@ -228,6 +257,7 @@ class Agent:
                     self.pending_text = (context, text, helper)
                     state["text_calls"].append({**helper, "field": action["label"], "value": text})
             # Browser.act checks freshness immediately before input, including after text generation.
+            before = controls_signature(page) if action["kind"] in {"click", "fill", "select"} else None
             try:
                 executed = state["browser"].act(action, page, text=text)
             except StalePage:
@@ -264,6 +294,17 @@ class Agent:
                 }
             )
             state["page"] = state["browser"].observe(screenshot=self.screenshots)
+            # The page reloaded and shows the same controls: this action is going nowhere.
+            repeats = state["history"][-LOOP_REPEATS:]
+            if (
+                before is not None
+                and len(repeats) == LOOP_REPEATS
+                and all(h["action"] == action["label"] and h["kind"] == action["kind"] for h in repeats)
+                and controls_signature(state["page"]) == before
+            ):
+                pair = (decision["operation"], action["label"])
+                if pair not in state["loops"]:
+                    state["loops"].append(pair)
             state["elapsed_ms"] = round((time.perf_counter() - state["started_at"]) * 1000)
             state["history"][-1].update(
                 page_changed=state["page"]["fingerprint"] != page["fingerprint"],
