@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 from .browser import Browser, StalePage
-from .model import action_space, choose, field_context, field_text
+from .model import NoTextValue, action_space, choose, field_context, field_text
 from .questions import MAX_STEPS, PROBE_SCROLLS
 
 # Distinct targets the executor may refuse on one unchanged page before the run stops.
@@ -14,6 +14,9 @@ UNREACHABLE_LIMIT = 3
 LOOP_LIMIT = 3
 # Repeating an action this many times over an unchanged set of controls is a loop, not progress.
 LOOP_REPEATS = 2
+# How far back a repeat still counts as a loop: a submit and its dismiss dialog alternate, so the
+# repeat is not always adjacent.
+LOOP_WINDOW = 4
 
 
 def controls_signature(page):
@@ -165,7 +168,9 @@ class Agent:
             looping = {pair for pair in state.get("loops", [])}
             if len(looping) >= LOOP_LIMIT:
                 state["status"] = "blocked"
-                raise ValueError("The same actions kept changing nothing on screen. Stopped instead of looping.")
+                raise ValueError(
+                    "The same actions kept being chosen without moving the page. Stopped instead of looping."
+                )
             state["decision"] = choose(
                 state["page"], state["goal"], state["history"], avoid=avoid, avoid_labels=looping
             )
@@ -253,7 +258,16 @@ class Agent:
                 if self.pending_text and self.pending_text[0] == context:
                     _, text, helper = self.pending_text
                 else:
-                    text, helper = field_text(context)
+                    try:
+                        text, helper = field_text(context)
+                    except NoTextValue:
+                        # The helper would not supply words for this field. Choosing it again would
+                        # spend another decision and another helper call to learn the same thing, so
+                        # the field is left alone and the next choice looks elsewhere.
+                        refused = (decision["operation"], action["label"])
+                        if refused not in state["loops"]:
+                            state["loops"].append(refused)
+                        raise
                     self.pending_text = (context, text, helper)
                     state["text_calls"].append({**helper, "field": action["label"], "value": text})
             # Browser.act checks freshness immediately before input, including after text generation.
@@ -294,14 +308,17 @@ class Agent:
                 }
             )
             state["page"] = state["browser"].observe(screenshot=self.screenshots)
-            # The page reloaded and shows the same controls: this action is going nowhere.
-            repeats = state["history"][-LOOP_REPEATS:]
-            if (
-                before is not None
-                and len(repeats) == LOOP_REPEATS
-                and all(h["action"] == action["label"] and h["kind"] == action["kind"] for h in repeats)
-                and controls_signature(state["page"]) == before
-            ):
+            # Repeating an action from a screen it has already been tried on is a loop, whether the
+            # repeat is adjacent (a reload changes state and shows the same controls) or alternating
+            # (a submit that raises a dialog, which is dismissed, and then the submit runs again).
+            # What the action did is beside the point: a form that keeps refusing a submit looks the
+            # same every time it refuses.
+            repeats = [
+                h
+                for h in state["history"][:-1][-LOOP_WINDOW:]
+                if h["action"] == action["label"] and h["kind"] == action["kind"] and h.get("controls") == before
+            ]
+            if before is not None and len(repeats) >= LOOP_REPEATS:
                 pair = (decision["operation"], action["label"])
                 if pair not in state["loops"]:
                     state["loops"].append(pair)
@@ -309,6 +326,7 @@ class Agent:
             state["history"][-1].update(
                 page_changed=state["page"]["fingerprint"] != page["fingerprint"],
                 url=state["page"]["url"],
+                controls=before,
                 elapsed_ms=state["elapsed_ms"],
             )
             if state["record"]:
