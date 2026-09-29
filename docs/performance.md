@@ -2,7 +2,9 @@
 
 The current video completes the Google Flights task in **7.073 seconds at 1×**. It starts with one natural-language goal and uses dynamic controls throughout. Jev selects operation + target in one request; Mercury generates the city strings when TYPE_TEXT is selected.
 
-[Video](demo.mp4) · [Recording measurements](flights-measurement.json) · [Matched run measurements](full-speed-measurement.json)
+> Upstream evidence from [Jev Ultrafast](https://github.com/browser-use/jev-ultrafast), kept for reference. This fork has not re-measured it.
+
+[Video](https://github.com/browser-use/jev-ultrafast/blob/main/docs/demo.mp4) · [Recording measurements](flights-measurement.json) · [Matched run measurements](full-speed-measurement.json)
 
 ## Matched runtime comparison
 
