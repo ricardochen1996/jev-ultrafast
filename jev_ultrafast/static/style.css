@@ -1100,3 +1100,31 @@ aside {
     justify-content: space-between;
   }
 }
+
+/* Address and goal share a baseline: same box, same padding, same line box. */
+.command {
+  align-items: start;
+}
+.command #target-url,
+.command #goal {
+  height: 46px;
+  min-height: 46px;
+  max-height: 46px;
+  padding: 12px 0;
+  font-size: 14px;
+  line-height: 22px;
+  resize: none;
+  overflow: auto;
+}
+.command-actions {
+  align-self: start;
+}
+#lang {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  color: #494b43;
+  font-size: 12px;
+  padding: 4px 6px;
+  cursor: pointer;
+}
