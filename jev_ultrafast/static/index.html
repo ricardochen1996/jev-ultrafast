@@ -4,68 +4,50 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="demo-token" content="__TOKEN__" />
-    <title>Jev Ultrafast · Browser Use</title>
+    <title>Jev Ultrafast · Console</title>
     <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <header>
-      <a href="/" aria-label="Homepage" class="brand"
-        >browser<span>use</span> <i>×</i> TypeSafe</a
-      >
-      <div class="local"><span class="dot"></span> Jev Ultrafast</div>
-    </header>
     <main>
-      <section class="intro">
-        <div>
-          <p class="eyebrow">A BROWSER THAT CHOOSES</p>
-          <h1>Every page is a set of possibilities.</h1>
-          <p>
-            Jev picks the next action. A small language model handles the words.
-            <a href="/demo.mp4" target="_blank" rel="noopener">Watch the real Google Flights run ↗</a>
-          </p>
-        </div>
-        <div class="model-tag">jev-latest <span>+ text helper</span></div>
-      </section>
-      <form id="task-form">
-        <div class="task-label">
-          <label for="goal">Give it a task</label
-          ><label class="overlay-control" title="Drive the tab that already shows this page instead of opening a new one"
+      <div class="topbar">
+        <span class="local"><span class="dot" id="status-dot"></span> Jev Ultrafast</span>
+        <span class="status" id="status" role="status">Ready to explore</span>
+        <span class="topbar-right" id="helper">Text helper loading</span>
+      </div>
+      <form id="task-form" class="command">
+        <input
+          id="target-url"
+          name="url"
+          type="text"
+          inputmode="url"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="https://example.com/page — http or https only"
+          aria-label="Page address"
+        />
+        <textarea
+          id="goal"
+          name="goal"
+          rows="2"
+          placeholder="Describe the task for this page, and what should be visible when it is done."
+          aria-label="Task goal"
+        ></textarea>
+        <div class="command-actions">
+          <label class="overlay-control" title="Drive the tab that already shows this page instead of opening a new one"
             ><input name="reuse" id="reuse" type="checkbox" checked /> Use my open tab</label
           >
-        </div>
-        <div class="task-row" id="url-row">
-          <input
-            id="target-url"
-            name="url"
-            type="text"
-            inputmode="url"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="https://example.com/page — http or https only"
-            aria-label="Page address"
-          />
-        </div>
-        <div class="task-row">
-          <textarea id="goal" name="goal" rows="5" placeholder="Describe the task for this page, and what should be visible when it is done."></textarea
-          ><button type="submit" id="start" class="primary">
-            Start run <span>↗</span>
-          </button>
+          <button type="submit" id="start" class="primary">Start run <span>↗</span></button>
         </div>
       </form>
       <div class="toolbar">
-        <div class="status">
-          <span class="dot" id="status-dot"></span
-          ><span id="status" role="status">Ready to explore</span>
-        </div>
-        <div class="controls"><label class="overlay-control"><input name="pace" id="pace" type="checkbox"> Slow motion</label>
-          <label class="overlay-control"
-            ><input name="overlays" id="overlays" type="checkbox" checked />
-            Targets</label
-          ><button type="button" id="choose" disabled>Choose next</button
-          ><button type="button" id="execute" disabled>Execute choice</button
-          ><button type="button" id="auto" disabled>Run automatically</button
-          ><button type="button" id="stop" hidden>Pause</button>
+        <div class="controls">
+          <label class="overlay-control"><input name="pace" id="pace" type="checkbox" /> Slow motion</label>
+          <label class="overlay-control"><input name="overlays" id="overlays" type="checkbox" checked /> Targets</label>
+          <button type="button" id="choose" disabled>Choose next</button>
+          <button type="button" id="execute" disabled>Execute choice</button>
+          <button type="button" id="auto" disabled>Run automatically</button>
+          <button type="button" id="stop" hidden>Pause</button>
         </div>
       </div>
       <div id="error" role="alert" hidden></div>
@@ -73,28 +55,18 @@
         <div class="browser-panel">
           <div class="browser-bar">
             <div class="traffic"><b></b><b></b><b></b></div>
-            <span id="url">Local demo browser</span
-            ><span class="live">LIVE</span>
+            <span id="url">Local demo browser</span><span class="live">LIVE</span>
           </div>
           <div class="viewport" id="viewport">
             <div class="empty" id="empty">
               <p class="empty-symbol">[ ↗ ]</p>
-              <h2>Watch the decision happen.</h2>
-              <p>
-                Start a task to see a real browser, its available<br />actions,
-                and the model's choice.
-              </p>
+              <p>Enter a page and a goal, then start a run.</p>
             </div>
-            <img
-              id="screenshot"
-              alt="Live screenshot of the controlled browser"
-              hidden
-            />
+            <img id="screenshot" alt="Live screenshot of the controlled browser" hidden />
             <div id="targets"></div>
           </div>
           <div class="browser-footer">
-            <span id="page-title">Isolated demo tab</span
-            ><span>AX tree → typed actions → CDP</span>
+            <span id="page-title">No page yet</span>
           </div>
         </div>
         <aside>
@@ -108,13 +80,8 @@
           <div id="plan" class="plan"></div>
           <div class="metrics">
             <div><span>Decision time</span><strong id="latency">—</strong></div>
-            <div>
-              <span>Target confidence</span><strong id="confidence">—</strong>
-            </div>
-            <div>
-              <span>Operation</span
-              ><strong id="completion">—</strong>
-            </div>
+            <div><span>Target confidence</span><strong id="confidence">—</strong></div>
+            <div><span>Operation</span><strong id="completion">—</strong></div>
           </div>
           <div id="operation-choices" class="operation-choices"></div>
           <p class="distribution-label">
@@ -124,38 +91,34 @@
           <div id="choices" class="choices">
             <p class="muted">Available actions will appear here.</p>
           </div>
-          <p class="aside-note">
-            Operation and target are separate choices in one request.<br />Text is generated only for TYPE_TEXT.
-          </p>
         </aside>
       </section>
-      <section class="runs">
-        <div class="trace-heading">
-          <h2>Runs <span id="runs-count">0 recorded</span></h2>
-          <button type="button" id="runs-refresh">Refresh</button>
-        </div>
-        <div id="runs-list">
-          <p class="muted">Every run is saved locally. Click one to review its trail.</p>
-        </div>
+      <section class="bottom">
+        <details class="runs" id="runs-panel">
+          <summary>
+            <span class="trace-title">Runs <span id="runs-count">0 recorded</span></span>
+            <button type="button" id="runs-refresh">Refresh</button>
+          </summary>
+          <div id="runs-list">
+            <p class="muted">Every run is saved locally. Click one to review its trail.</p>
+          </div>
+        </details>
+        <section class="trace">
+          <div class="trace-heading">
+            <span class="trace-title">Decision trail <span id="step-count">0 actions</span></span>
+            <span class="trace-tools">
+              <button type="button" id="download" disabled>Export trace ↓</button>
+            </span>
+          </div>
+          <div id="history">
+            <p class="muted">Each executed action leaves an observed result.</p>
+          </div>
+        </section>
       </section>
-      <section class="trace">
-        <div class="trace-heading">
-          <h2>Decision trail <span id="step-count">0 actions</span></h2>
-          <button type="button" id="download" disabled>Export trace ↓</button>
-        </div>
-        <div id="history">
-          <p class="muted">Each executed action leaves an observed result.</p>
-        </div>
-      </section>
-      <details>
+      <details class="model-details">
         <summary>What the model sees</summary>
-        <pre id="model-state">
-Start a demo to inspect its structured state.</pre>
+        <pre id="model-state">Start a run to inspect its structured state.</pre>
       </details>
-      <footer>
-        <span>Browser Use × TypeSafe · Experimental baseline</span
-        ><span id="helper">Text helper loading</span>
-      </footer>
     </main>
     <div id="run-detail" class="drawer" hidden>
       <div class="drawer-backdrop" id="run-close"></div>

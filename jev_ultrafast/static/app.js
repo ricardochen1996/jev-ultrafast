@@ -263,7 +263,13 @@ $("runs-list").addEventListener("click", (event) => {
   const id = event.target.closest("[data-run]")?.dataset.run;
   if (id) showRun(id);
 });
-$("runs-refresh").addEventListener("click", loadRuns);
+$("runs-refresh").addEventListener("click", (event) => {
+  // The button sits inside the summary: refreshing should open the list rather than toggle it shut.
+  event.stopPropagation();
+  event.preventDefault();
+  $("runs-panel").open = true;
+  loadRuns();
+});
 ["run-close", "run-close-button"].forEach((id) =>
   $(id).addEventListener("click", closeRun),
 );
