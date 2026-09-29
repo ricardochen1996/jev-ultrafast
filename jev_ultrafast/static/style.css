@@ -747,7 +747,7 @@ textarea:focus-visible {
 }
 .run-row {
   display: grid;
-  grid-template-columns: 78px 1fr auto auto;
+  grid-template-columns: 74px minmax(0, 1fr) 132px 86px;
   gap: 16px;
   align-items: center;
   border-bottom: 1px solid var(--line);
@@ -775,6 +775,8 @@ textarea:focus-visible {
     11px ui-monospace,
     monospace;
   color: #8d9186;
+  text-align: right;
+  white-space: nowrap;
 }
 .run-row .run-main small {
   display: block;
@@ -924,7 +926,7 @@ main {
   padding: 0 22px 14px;
   display: grid;
   /* Fixed rows, placed explicitly: a hidden error bar must not shift every panel up a row. */
-  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
   gap: 10px;
 }
 .topbar {
@@ -1077,8 +1079,8 @@ aside {
   gap: 8px;
 }
 .model-details {
-  grid-row: 7;
   border-top: 1px solid var(--line);
+  margin-top: 10px;
   padding-top: 6px;
 }
 .model-details > summary {
@@ -1087,8 +1089,9 @@ aside {
   cursor: pointer;
 }
 .model-details pre {
-  max-height: 30vh;
+  max-height: 40vh;
   overflow: auto;
+  font-size: 11px;
 }
 @media (max-width: 1100px) {
   .command {
@@ -1127,4 +1130,44 @@ aside {
   font-size: 12px;
   padding: 4px 6px;
   cursor: pointer;
+}
+
+/* The instruction bar keeps the toolbar useful once a task is open. */
+.toolbar {
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+}
+.instruction-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+.instruction-bar[hidden] {
+  display: none;
+}
+.instruction-bar input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+  color: #343530;
+}
+/* An instruction boundary reads as a divider inside one task trail. */
+.trace-row.instruction {
+  grid-template-columns: 32px 1fr;
+  background: rgb(0 0 0 / 0.02);
+}
+.trace-row.instruction .number {
+  color: var(--green);
+}
+.trace-row.instruction div {
+  font-weight: 600;
 }
