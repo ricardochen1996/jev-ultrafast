@@ -77,7 +77,7 @@ def test_one_index_per_node_with_operation_specific_targets():
 def test_all_heads_are_one_request_and_only_matching_head_executes(monkeypatch):
     calls = []
 
-    def post(_url, _key, body):
+    def post(_url, _key, body, fallback=None):
         calls.append(body)
         return {
             "model": "test",
@@ -97,7 +97,7 @@ def test_all_heads_are_one_request_and_only_matching_head_executes(monkeypatch):
 
 
 def test_click_cannot_consume_a_text_target(monkeypatch):
-    def post(_url, _key, body):
+    def post(_url, _key, body, fallback=None):
         return {
             "model": "test",
             "answers": {
@@ -120,7 +120,7 @@ def test_target_head_receives_control_state_and_full_next_step_rules(monkeypatch
         "role": "checkbox", "checked": "true", "selected": False,
     })
 
-    def post(_url, _key, body):
+    def post(_url, _key, body, fallback=None):
         questions = body["questions"]
         target = questions["click_target"]
         assert target["criteria"]["1"]["checked"] == "true"
@@ -349,7 +349,7 @@ def test_repeatedly_refused_targets_stop_instead_of_spinning(runner, monkeypatch
 
 
 def test_avoided_target_falls_back_to_next_best_candidate(monkeypatch):
-    def post(_url, _key, body):
+    def post(_url, _key, body, fallback=None):
         return {
             "model": "test",
             "answers": {
@@ -442,7 +442,7 @@ def test_clearing_a_finished_run_resets_the_console(tmp_path, monkeypatch):
 def test_a_clickable_label_can_be_avoided(monkeypatch):
     """A looping label is skipped by name, because a reload renumbers the same control."""
 
-    def post(_url, _key, body):
+    def post(_url, _key, body, fallback=None):
         return {
             "model": "test",
             "answers": {
@@ -517,3 +517,30 @@ def test_deleting_the_run_on_screen_ends_it(tmp_path, monkeypatch):
     fake.close.assert_called_once()
     assert demo.AGENT is None and not demo.RUN
     assert demo.response_state()["page"] is None
+
+
+def test_a_quota_error_falls_back_to_the_second_endpoint(monkeypatch):
+    calls = []
+
+    def post_once(url, key, body, headers=None):
+        calls.append(url)
+        if len(calls) == 1:
+            raise model.QuotaExceeded("no funds")
+        return {"model": "local", "answers": {}}
+
+    monkeypatch.setattr(model, "post_once", post_once)
+    assert model.post_json("https://primary", "k", {}, fallback="https://local")["model"] == "local"
+    assert calls == ["https://primary", "https://local"]
+
+
+def test_a_quota_error_is_kept_when_there_is_no_fallback(monkeypatch):
+    monkeypatch.setattr(model, "post_once", Mock(side_effect=model.QuotaExceeded("no funds")))
+    with pytest.raises(model.QuotaExceeded):
+        model.post_json("https://primary", "k", {})
+
+
+def test_a_paid_model_without_funds_is_reported_as_a_quota_problem(monkeypatch):
+    response = Mock(status_code=402, is_error=True)
+    monkeypatch.setattr(model.CLIENT, "post", Mock(return_value=response))
+    with pytest.raises(model.QuotaExceeded, match="no funds for this model"):
+        model.post_once("https://zen", "k", {})
