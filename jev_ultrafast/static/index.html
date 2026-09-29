@@ -14,12 +14,15 @@
         <span class="local"><span class="dot" id="status-dot"></span> Browser Ultrafast</span>
         <span class="status" id="status" role="status">Ready to explore</span>
         <span class="topbar-right" id="helper">Text helper loading</span>
-        <select id="lang" aria-label="Language">
-          <option value="en">EN</option>
-          <option value="zh">中文</option>
-        </select>
+        <div id="lang" class="lang" role="radiogroup" aria-label="Language / 语言">
+          <button type="button" role="radio" data-lang="zh" lang="zh-CN">中</button>
+          <button type="button" role="radio" data-lang="en" lang="en">EN</button>
+        </div>
       </div>
       <form id="task-form" class="command">
+        <p class="step" id="step-url"><b>1</b><i data-icon="globe"></i><span id="label-step-url">Page</span></p>
+        <p class="step" id="step-goal"><b>2</b><i data-icon="pencil"></i><span id="label-step-goal">Task</span></p>
+        <p class="step" id="step-run"><b>3</b><i data-icon="play"></i><span id="label-step-run">Run</span></p>
         <input
           id="target-url"
           name="url"
@@ -38,43 +41,16 @@
           aria-label="Task goal"
         ></textarea>
         <div class="command-actions">
-          <label class="overlay-control"
-            ><input name="reuse" id="reuse" type="checkbox" checked />
-            <span id="label-reuse" title="Drive the tab you already have open at this address, instead of opening a new one."
-              >Use my open tab</span
-            ></label
-          >
-          <button type="submit" id="start" class="primary">
-            <span id="label-start">Start run</span> <span aria-hidden="true">↗</span>
-          </button>
+          <label class="toggle" id="reuse-toggle" title="Use my open tab"
+            ><input name="reuse" id="reuse" type="checkbox" checked /><i data-icon="tab"></i
+          ></label>
+          <label class="toggle" id="overlays-toggle" title="Target boxes"
+            ><input name="overlays" id="overlays" type="checkbox" checked /><i data-icon="boxes"></i
+          ></label>
+          <button type="button" id="new-task" class="icon" hidden><i data-icon="plus"></i></button>
+          <button type="submit" id="start" class="primary icon"><i id="start-icon" data-icon="play"></i></button>
         </div>
       </form>
-      <div class="toolbar">
-        <div class="instruction-bar" id="instruction-bar" hidden>
-          <input
-            id="instruction"
-            type="text"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="Append an instruction and keep working on this page"
-            aria-label="Next instruction"
-          />
-          <button type="button" id="append">Append and continue</button>
-          <button type="button" id="replay">Re-run whole task</button>
-        </div>
-        <div class="controls">
-          <label class="overlay-control"
-            ><input name="pace" id="pace" type="checkbox" /> <span id="label-slow">Slow motion</span></label
-          >
-          <label class="overlay-control"
-            ><input name="overlays" id="overlays" type="checkbox" checked /> <span id="label-targets">Targets</span></label
-          >
-          <button type="button" id="choose" disabled>Choose next</button>
-          <button type="button" id="execute" disabled>Execute choice</button>
-          <button type="button" id="auto" disabled>Run automatically</button>
-          <button type="button" id="stop" hidden>Pause</button>
-        </div>
-      </div>
       <div id="error" role="alert" hidden></div>
       <section class="workspace">
         <div class="browser-panel">
@@ -131,7 +107,7 @@
           <div class="trace-heading">
             <span class="trace-title"><span id="label-trail">Decision trail</span> <span id="step-count">0 actions</span></span>
             <span class="trace-tools">
-              <button type="button" id="download" disabled>Export trace ↓</button>
+              <button type="button" id="download" class="icon small" disabled><i data-icon="download"></i></button>
             </span>
           </div>
           <div id="history">
@@ -153,8 +129,9 @@
             <h2 id="run-title">Run</h2>
           </div>
           <div class="drawer-actions">
-            <button type="button" id="run-export" disabled>Export trace ↓</button>
-            <button type="button" id="run-close-button">Close</button>
+            <button type="button" id="run-replay" class="icon" disabled><i data-icon="replay"></i></button>
+            <button type="button" id="run-export" class="icon" disabled><i data-icon="download"></i></button>
+            <button type="button" id="run-close-button" class="icon"><i data-icon="close"></i></button>
           </div>
         </div>
         <div id="run-meta" class="run-meta"></div>

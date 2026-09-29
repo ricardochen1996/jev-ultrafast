@@ -16,26 +16,31 @@ const STRINGS = {
     title: "Browser Ultrafast",
     localBrowser: "Local demo browser",
     defaultGoal: 'Type "browser ultrafast" into the search box, then click search.',
-    instructionPlaceholder: "Append an instruction and keep working on this page",
-    append: "Append and continue",
+    instructionPlaceholder: "Type the next instruction for this page and press Enter",
+    append: "Continue",
+    newTask: "New task",
+    newTaskHint: "Start over on this address with the goal in the box, or the first goal if it is empty",
     replay: "Re-run whole task",
     appendBusy: "Appending the instruction…",
     replayBusy: "Replaying the whole task…",
     instructionStep: (n) => `Instruction ${n}`,
     instructionMeta: "Instruction boundaries",
-    emptyHint: "Enter a page and a goal, then start a run.",
+    emptyHint: "Enter a page and a goal, then press Start (or Enter).",
     noPage: "No page yet",
     urlPlaceholder: "https://example.com/page — http or https only",
     goalPlaceholder: "Describe the task for this page, and what should be visible when it is done.",
     reuse: "Use my open tab",
     reuseHint: "Drive the tab you already have open at this address, instead of opening a new one.",
-    start: "Start run",
-    slow: "Slow motion",
-    targets: "Targets",
-    choose: "Choose next",
-    execute: "Execute choice",
-    auto: "Run automatically",
-    stop: "Pause",
+    start: "Start",
+    stop: "Stop",
+    targets: "Target boxes",
+    stepUrl: "Page",
+    stepGoal: "Task",
+    stepNext: "Next instruction",
+    stepRun: "Run",
+    stepContinue: "Continue",
+    replayRun: "Replay this run",
+    deleteRun: "Delete this run",
     nextAction: "NEXT ACTION",
     waitingPage: "Waiting for a page",
     chooseAction: "Choose an action",
@@ -46,7 +51,7 @@ const STRINGS = {
     operation: "Operation",
     indexed: "Indexed elements",
     ranked: "Ranked by Jev",
-    unranked: "Choose next to rank",
+    unranked: "Ranked once Jev decides",
     choicesEmpty: "Available actions will appear here.",
     runs: "Runs",
     recorded: (n) => `${n} recorded`,
@@ -54,7 +59,7 @@ const STRINGS = {
     runsEmpty: "Every run is saved locally. Click one to review its trail.",
     trail: "Decision trail",
     trailEmpty: "Each executed action leaves an observed result.",
-    export: "Export trace ↓",
+    export: "Export trace",
     modelSees: "What the model sees",
     modelStateIdle: "Start a run to inspect its structured state.",
     runDetail: "RUN DETAIL",
@@ -84,17 +89,110 @@ const STRINGS = {
     busyExecuting: "Executing the choice…",
     busyRunning: "Running the browser…",
     paused: "Paused · needs attention",
-    pausing: "Pausing after the current request…",
+    stopped: "Stopped · type the next instruction, or press Continue",
+    pausing: "Stopping after the current step…",
     unreachable: "Cannot reach the local server",
     badUrl: "Enter a full http or https page address, for example https://example.com",
     states: {
       idle: "Ready to explore",
-      ready: "Page observed · ready for a decision",
-      predicted: "Choice ready · inspect or execute",
-      done: "Run complete · inspect the page",
+      ready: "Page observed · ready",
+      predicted: "Choice ready · execute it or resume",
+      done: "Done · waiting for the next instruction",
       blocked: "Stopped · no supported next action",
     },
-    badge: { done: "done", blocked: "blocked", error: "error", running: "running", ready: "ready" },
+    badge: { done: "done", blocked: "blocked", error: "error", running: "running", ready: "ready", predicted: "paused" },
+    server: {},
+    patterns: [],
+  },
+  zh: {
+    title: "Browser Ultrafast",
+    localBrowser: "本地浏览器",
+    defaultGoal: "在搜索框输入 browser ultrafast，然后点击搜索。",
+    instructionPlaceholder: "输入下一条指令，按回车继续在当前页面操作",
+    append: "继续",
+    newTask: "新任务",
+    newTaskHint: "在这个网址上用输入框里的任务重新开始；输入框为空时沿用最初的任务",
+    replay: "重新执行整个任务",
+    appendBusy: "正在追加指令…",
+    replayBusy: "正在重新执行整个任务…",
+    instructionStep: (n) => `第 ${n} 条指令`,
+    instructionMeta: "指令分界",
+    emptyHint: "填写网址和任务，点击「开始」或直接按回车。",
+    noPage: "尚未打开页面",
+    urlPlaceholder: "https://example.com/page — 仅支持 http 或 https",
+    goalPlaceholder: "描述这个页面上要完成的任务，以及完成时应当看到什么。",
+    reuse: "复用已打开的标签页",
+    reuseHint: "直接在你已打开该网址的标签页里操作，而不是新开一个标签页。",
+    start: "开始",
+    stop: "停止",
+    targets: "目标框",
+    stepUrl: "网址",
+    stepGoal: "任务",
+    stepNext: "下一条指令",
+    stepRun: "开始",
+    stepContinue: "继续",
+    replayRun: "重放这次运行",
+    deleteRun: "删除这条记录",
+    nextAction: "下一步动作",
+    waitingPage: "等待页面",
+    chooseAction: "请选择一个动作",
+    elements: (n) => `${n} 个元素`,
+    options: (n) => `${n} 个可选动作`,
+    decisionTime: "决策耗时",
+    targetConfidence: "目标置信度",
+    operation: "操作类型",
+    indexed: "已索引元素",
+    ranked: "按 Jev 概率排序",
+    unranked: "Jev 决策后排序",
+    choicesEmpty: "可用动作会显示在这里。",
+    runs: "运行记录",
+    recorded: (n) => `已记录 ${n} 次`,
+    unavailable: "不可用",
+    runsEmpty: "每次运行都会保存在本地，点击任意一条即可查看当时的详情。",
+    trail: "执行轨迹",
+    trailEmpty: "每个已执行的动作都会留下观测结果。",
+    export: "导出轨迹",
+    modelSees: "模型看到的内容",
+    modelStateIdle: "开始一次运行后，这里会显示结构化的状态。",
+    runDetail: "运行详情",
+    close: "关闭",
+    runTitle: "运行",
+    statusMeta: "状态",
+    goalMeta: "任务目标",
+    pageMeta: "页面地址",
+    startedMeta: "起止时间",
+    durationMeta: "耗时",
+    actionsMeta: "动作统计",
+    actionsSummary: (steps, decisions, texts) => `执行 ${steps} 步 · 决策 ${decisions} 次 · 生成文本 ${texts} 次`,
+    finalScreen: "最终画面",
+    errors: "错误",
+    noActions: "本次运行没有执行任何动作。",
+    texts: "生成的文本",
+    noTexts: "本次运行无需生成文本。",
+    generated: "已生成",
+    pageChanged: "页面已变化",
+    noChange: "未观察到变化",
+    viaNode: " · 节点直达",
+    actions: (n) => `${n} 个动作`,
+    seconds: (value) => `${value} 秒`,
+    running: "运行中…",
+    busyOpening: "正在打开页面…",
+    busyPredicting: "Jev 正在比较可选动作…",
+    busyExecuting: "正在执行该选择…",
+    busyRunning: "正在操作浏览器…",
+    paused: "已暂停 · 需要处理",
+    stopped: "已停止 · 输入下一条指令，或点「继续」",
+    pausing: "当前步骤结束后停止…",
+    unreachable: "无法连接本地服务",
+    badUrl: "请输入完整的网页地址（http 或 https），例如 https://example.com",
+    states: {
+      idle: "准备就绪",
+      ready: "已观察页面 · 就绪",
+      predicted: "已给出选择 · 可执行或继续",
+      done: "已完成 · 等待下一条指令",
+      blocked: "已停止 · 没有可推进的动作",
+    },
+    badge: { done: "完成", blocked: "受阻", error: "错误", running: "运行中", ready: "就绪", predicted: "暂停" },
     server: {
       "Enter a full http or https page address, for example https://example.com":
         "请输入完整的网页地址（http 或 https），例如 https://example.com",
@@ -125,6 +223,8 @@ const STRINGS = {
       "The page is still showing a dialog. Choose again.": "页面还停留在一个弹窗上，请再次选择",
       "The page was still moving when the block was reported. Choose again.":
         "报告无法继续时页面仍在变化，请再次选择",
+      "The chosen targets could not be reached on this page. Stopped instead of retrying.":
+        "选中的目标在当前页面上无法点到，已停止而不是反复重试；可以换个说法输入下一条指令",
       "Request failed": "请求失败",
     },
     patterns: [
@@ -133,94 +233,33 @@ const STRINGS = {
       [/^Stopped at the (\d+)-action demo budget$/, (m) => `已达到 ${m[1]} 步的动作上限`],
     ],
   },
-  zh: {
-    title: "Browser Ultrafast",
-    localBrowser: "本地浏览器",
-    defaultGoal: "在搜索框输入 browser ultrafast，然后点击搜索。",
-    instructionPlaceholder: "追加一条指令，继续在同一个页面上操作",
-    append: "追加并继续",
-    replay: "重新执行整个任务",
-    appendBusy: "正在追加指令…",
-    replayBusy: "正在重新执行整个任务…",
-    instructionStep: (n) => `第 ${n} 条指令`,
-    instructionMeta: "指令分界",
-    emptyHint: "填写页面地址和任务目标，然后开始运行。",
-    noPage: "尚未打开页面",
-    urlPlaceholder: "https://example.com/page — 仅支持 http 或 https",
-    goalPlaceholder: "描述这个页面上要完成的任务，以及完成时应当看到什么。",
-    reuse: "复用已打开的标签页",
-    reuseHint: "直接在你已打开该网址的标签页里操作，而不是新开一个标签页。",
-    start: "开始运行",
-    slow: "慢速演示",
-    targets: "目标框",
-    choose: "让 Jev 选择",
-    execute: "执行该选择",
-    auto: "自动运行",
-    stop: "暂停",
-    nextAction: "下一步动作",
-    waitingPage: "等待页面",
-    chooseAction: "请选择一个动作",
-    elements: (n) => `${n} 个元素`,
-    options: (n) => `${n} 个可选动作`,
-    decisionTime: "决策耗时",
-    targetConfidence: "目标置信度",
-    operation: "操作类型",
-    indexed: "已索引元素",
-    ranked: "按 Jev 概率排序",
-    unranked: "点击「让 Jev 选择」后排序",
-    choicesEmpty: "可用动作会显示在这里。",
-    runs: "运行记录",
-    recorded: (n) => `已记录 ${n} 次`,
-    unavailable: "不可用",
-    runsEmpty: "每次运行都会保存在本地，点击任意一条即可查看当时的详情。",
-    trail: "执行轨迹",
-    trailEmpty: "每个已执行的动作都会留下观测结果。",
-    export: "导出轨迹 ↓",
-    modelSees: "模型看到的内容",
-    modelStateIdle: "开始一次运行后，这里会显示结构化的状态。",
-    runDetail: "运行详情",
-    close: "关闭",
-    runTitle: "运行",
-    statusMeta: "状态",
-    goalMeta: "任务目标",
-    pageMeta: "页面地址",
-    startedMeta: "起止时间",
-    durationMeta: "耗时",
-    actionsMeta: "动作统计",
-    actionsSummary: (steps, decisions, texts) => `执行 ${steps} 步 · 决策 ${decisions} 次 · 生成文本 ${texts} 次`,
-    finalScreen: "最终画面",
-    errors: "错误",
-    noActions: "本次运行没有执行任何动作。",
-    texts: "生成的文本",
-    noTexts: "本次运行无需生成文本。",
-    generated: "已生成",
-    pageChanged: "页面已变化",
-    noChange: "未观察到变化",
-    viaNode: " · 节点直达",
-    actions: (n) => `${n} 个动作`,
-    seconds: (value) => `${value} 秒`,
-    running: "运行中…",
-    busyOpening: "正在打开页面…",
-    busyPredicting: "Jev 正在比较可选动作…",
-    busyExecuting: "正在执行该选择…",
-    busyRunning: "正在操作浏览器…",
-    paused: "已暂停 · 需要处理",
-    pausing: "当前请求结束后暂停…",
-    unreachable: "无法连接本地服务",
-    badUrl: "请输入完整的网页地址（http 或 https），例如 https://example.com",
-    states: {
-      idle: "准备就绪",
-      ready: "已观察页面 · 可以决策",
-      predicted: "已给出选择 · 可检查或执行",
-      done: "运行结束 · 请核对页面结果",
-      blocked: "已停止 · 没有可推进的动作",
-    },
-    badge: { done: "完成", blocked: "受阻", error: "错误", running: "运行中", ready: "就绪" },
-    server: {},
-    patterns: [],
-  },
 };
-const STORE = { url: "jev.url", goal: "jev.goal", reuse: "jev.reuse", lang: "jev.lang" };
+// Line icons, drawn inline so the page needs no icon font or network request.
+const svg = (d) =>
+  `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICONS = {
+  play: svg('<path d="M7 4.5v15l12-7.5z" fill="currentColor" stroke="none"/>'),
+  stop: svg('<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/>'),
+  enter: svg('<path d="M20 5v7a3 3 0 0 1-3 3H5"/><path d="m9 11-4 4 4 4"/>'),
+  plus: svg('<path d="M12 5v14M5 12h14"/>'),
+  globe: svg('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>'),
+  pencil: svg('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>'),
+  tab: svg('<rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 10h18M8 5v5"/>'),
+  boxes: svg('<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><path d="M15 3h6v6M3 15v6h6" stroke-dasharray="2 2"/>'),
+  download: svg('<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>'),
+  replay: svg('<path d="M4 12a8 8 0 1 0 2.4-5.7L4 8.5"/><path d="M4 4v4.5h4.5"/>'),
+  trash: svg('<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"/>'),
+  close: svg('<path d="M6 6l12 12M18 6 6 18"/>'),
+};
+function icon(node, name) {
+  if (node && node.dataset.icon !== name) {
+    node.dataset.icon = name;
+    node.innerHTML = ICONS[name];
+  }
+}
+document.querySelectorAll("i[data-icon]").forEach((node) => (node.innerHTML = ICONS[node.dataset.icon]));
+let openRunRecord = null;
+const STORE = { url: "jev.url", goal: "jev.goal", reuse: "jev.reuse.v2", lang: "jev.lang" };
 const stored = (key, fallback = null) => {
   try {
     return localStorage.getItem(key) ?? fallback;
@@ -250,10 +289,11 @@ const setText = (id, value) => {
 };
 
 // The page and the goal are the two things a tester retypes every time; keep them across visits.
-const remember = () => {
+// Only an opening goal is worth recalling; follow-up instructions belong to the open page.
+const remember = (goal = !state?.page) => {
   try {
     localStorage.setItem(STORE.url, $("target-url").value);
-    localStorage.setItem(STORE.goal, $("goal").value);
+    if (goal) localStorage.setItem(STORE.goal, $("goal").value);
     localStorage.setItem(STORE.reuse, $("reuse").checked ? "1" : "0");
   } catch {
     /* Private mode still runs the page; it just forgets. */
@@ -273,17 +313,19 @@ const recall = () => {
 function applyLanguage() {
   document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
   document.title = t("title");
-  $("lang").value = lang;
+  document.querySelectorAll("#lang [data-lang]").forEach((node) => {
+    node.setAttribute("aria-checked", String(node.dataset.lang === lang));
+  });
   $("target-url").placeholder = t("urlPlaceholder");
   $("goal").placeholder = t("goalPlaceholder");
-  setText("label-reuse", t("reuse"));
-  setText("label-start", t("start"));
-  setText("label-slow", t("slow"));
-  setText("label-targets", t("targets"));
-  setText("choose", t("choose"));
-  setText("execute", t("execute"));
-  setText("auto", t("auto"));
-  setText("stop", t("stop"));
+  $("reuse-toggle").title = `${t("reuse")} — ${t("reuseHint")}`;
+  $("overlays-toggle").title = t("targets");
+  setText("label-step-url", t("stepUrl"));
+  $("new-task").title = $("new-task").ariaLabel = t("newTaskHint");
+  $("download").title = $("download").ariaLabel = t("export");
+  $("run-export").title = $("run-export").ariaLabel = t("export");
+  $("run-replay").title = $("run-replay").ariaLabel = t("replayRun");
+  $("run-close-button").title = $("run-close-button").ariaLabel = t("close");
   setText("eyebrow-next", t("nextAction"));
   setText("label-decision", t("decisionTime"));
   setText("label-confidence", t("targetConfidence"));
@@ -291,21 +333,13 @@ function applyLanguage() {
   setText("label-indexed", t("indexed"));
   setText("label-runs", t("runs"));
   setText("label-trail", t("trail"));
-  setText("download", t("export"));
   setText("label-model-sees", t("modelSees"));
   setText("label-run-detail", t("runDetail"));
   setText("label-run-trail", t("trail"));
   setText("label-run-texts", t("texts"));
-  setText("run-export", t("export"));
-  setText("run-close-button", t("close"));
   setText("empty-hint", t("emptyHint"));
-  setText("append", t("append"));
-  setText("replay", t("replay"));
-  $("instruction").placeholder = t("instructionPlaceholder");
-  if (!$("goal").value.trim()) $("goal").value = t("defaultGoal");
+  if (!state?.page && !$("goal").value.trim()) $("goal").value = t("defaultGoal");
   setText("page-title", state?.page?.title || t("noPage"));
-  $("label-reuse").title = t("reuseHint");
-  $("page-title").title = t("reuseHint");
   if (!state) {
     // Nothing has been observed yet, so the placeholders are the only text on screen.
     setText("status", t("states").idle);
@@ -344,23 +378,40 @@ async function call(name, body = {}) {
   render();
   return data;
 }
+// One box for everything: before a run it holds the goal; once a page is open it takes the next
+// instruction for that same page. Editing the address back to another page starts a new task.
+const continuing = () => {
+  if (!state?.page) return false;
+  const url = $("target-url").value.trim();
+  return !url || url === state.run_url || url === state.page.url;
+};
 function controls() {
   const live = state?.page && !["done", "blocked"].includes(state.status);
-  $("start").disabled = busy;
+  const next = continuing();
+  // One primary button: it starts or continues a run, and while a run is going it stops it.
+  $("start").disabled = busy && !automatic;
+  $("start").classList.toggle("stopping", automatic);
+  const label = automatic ? t("stop") : next ? t("append") : t("start");
+  $("start").title = $("start").ariaLabel = label;
+  icon($("start-icon"), automatic ? "stop" : next ? "enter" : "play");
+  // The steps above the boxes read as a checklist: done steps tick, the next one is lit.
+  const url = /^https?:\/\/\S+/i.test($("target-url").value.trim()),
+    goal = Boolean($("goal").value.trim());
+  setText("label-step-goal", next ? t("stepNext") : t("stepGoal"));
+  setText("label-step-run", automatic ? t("stop") : next ? t("stepContinue") : t("stepRun"));
+  icon($("step-run").querySelector("i"), automatic ? "stop" : next ? "enter" : "play");
+  $("step-url").className = `step ${url ? "done" : "current"}`;
+  $("step-goal").className = `step ${!url ? "" : goal ? "done" : "current"}`;
+  $("step-run").className = `step ${automatic ? "active" : url && goal ? "current" : ""}`;
+  $("goal").placeholder = next ? t("instructionPlaceholder") : t("goalPlaceholder");
+  $("new-task").hidden = !state?.page;
+  $("new-task").disabled = busy;
   $("goal").disabled = busy;
   $("target-url").disabled = busy;
   $("reuse").disabled = busy;
-  $("choose").disabled = busy || !live;
-  $("execute").disabled = busy || !state?.decision || !live;
-  $("auto").disabled = busy || !live;
-  $("auto").hidden = automatic;
-  $("stop").hidden = !automatic;
   $("download").disabled = !state?.history?.length;
-  const open = Boolean(state?.page) && !busy;
-  $("instruction-bar").hidden = !Boolean(state?.page);
-  $("instruction").disabled = !open;
-  $("append").disabled = !open || !$("instruction").value.trim();
-  $("replay").disabled = !open || !(state?.plan || []).length;
+  $("run-replay").disabled = busy || !openRunRecord;
+  document.querySelectorAll("[data-run-action]").forEach((node) => (node.disabled = busy));
 }
 async function perform(fn, label) {
   if (busy) return;
@@ -458,6 +509,7 @@ function render() {
     })
     .join("");
   $("targets").hidden = !$("overlays").checked;
+  placeTargets();
   $("history").innerHTML = state.history.length
     ? state.history.map(trailRow).join("")
     : `<p class="muted">${escape(t("trailEmpty"))}</p>`;
@@ -475,9 +527,48 @@ function render() {
   );
   controls();
 }
+function stop() {
+  automatic = false;
+  $("status").textContent = t("pausing");
+  controls();
+}
+// After each instruction the run stays open and the box waits for the next one.
+function awaitNext() {
+  if (!state?.page) return;
+  controls();
+  $("goal").focus();
+}
 $("task-form").addEventListener("submit", (event) => {
   event.preventDefault();
-  automatic = false;
+  if (automatic) return stop();
+  if (busy) return;
+  if (continuing()) return next();
+  begin();
+});
+$("new-task").addEventListener("click", begin);
+$("goal").addEventListener("input", controls);
+$("target-url").addEventListener("input", controls);
+function next() {
+  const text = $("goal").value.trim();
+  // An empty box resumes the current instruction if it was stopped part-way.
+  if (!text && ["done", "blocked"].includes(state.status)) return $("goal").focus();
+  perform(async () => {
+    automatic = true;
+    controls();
+    try {
+      if (text) await call("instruct", { instruction: text });
+      $("goal").value = "";
+      await settle();
+    } finally {
+      automatic = false;
+    }
+  }, text ? t("appendBusy") : t("busyRunning")).then(() => {
+    awaitNext();
+    loadRuns();
+  });
+}
+function begin() {
+  if (busy) return;
   const url = $("target-url").value.trim();
   if (!/^https?:\/\//i.test(url)) {
     $("error").classList.remove("notice");
@@ -486,58 +577,61 @@ $("task-form").addEventListener("submit", (event) => {
     $("target-url").focus();
     return;
   }
-  remember();
-  perform(
-    () =>
-      call("open", {
-        instruction: $("goal").value,
-        url,
-        reuse: $("reuse").checked,
-      }),
-    t("busyOpening"),
-  ).then(loadRuns);
+  if (!$("goal").value.trim() && state?.page) $("goal").value = state.plan?.[0] || "";
+  remember(true);
+  perform(async () => {
+    automatic = true;
+    controls();
+    try {
+      await call("open", { instruction: $("goal").value, url, reuse: $("reuse").checked });
+      $("goal").value = "";
+      await settle();
+    } finally {
+      automatic = false;
+    }
+  }, t("busyOpening")).then(() => {
+    awaitNext();
+    loadRuns();
+  });
+}
+// Enter starts; Shift+Enter still breaks a line in a long goal.
+$("goal").addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    $("task-form").requestSubmit();
+  }
 });
+// A run that ends while the user watches is reported as stopped, not as a failure.
+async function settle() {
+  const status = await runToSettle();
+  if (!automatic && !["done", "blocked"].includes(status)) {
+    $("status").textContent = t("stopped");
+    return true;
+  }
+  return false;
+}
 
 async function runToSettle() {
   // One instruction runs until the model stops: done, blocked, or paused by the user.
   for (let i = 0; i < 120 && automatic; i++) {
     $("status").textContent = t("running");
-    if ($("pace").checked) {
-      await call("predict");
-      await new Promise((resolve) => setTimeout(resolve, 450));
-      if (!automatic) break;
-      await call("act", { fingerprint: state.page.fingerprint });
-    } else {
-      await call("tick");
-    }
+    await call("tick");
     if (["done", "blocked"].includes(state.status)) break;
   }
   return state.status;
 }
 
-$("instruction").addEventListener("input", controls);
-$("append").addEventListener("click", () => {
-  const text = $("instruction").value.trim();
-  if (!text) return;
-  perform(async () => {
-    await call("instruct", { instruction: text });
-    $("instruction").value = "";
-    controls();
-    await runToSettle();
-  }, t("appendBusy")).then(loadRuns);
-});
-$("replay").addEventListener("click", () => {
-  const instructions = (state?.plan || []).slice();
-  if (!instructions.length) return;
+// Replay a recorded task from its first page: the same instructions, in order, in one run.
+function replay(url, instructions) {
+  if (busy || !url || !instructions.length) return;
+  closeRun();
+  $("target-url").value = url;
   perform(async () => {
     automatic = true;
     controls();
     try {
-      await call("open", {
-        url: state.run_url || state.page.url,
-        reuse: $("reuse").checked,
-        instruction: instructions[0],
-      });
+      await call("open", { url, reuse: $("reuse").checked, instruction: instructions[0] });
+      $("goal").value = "";
       await runToSettle();
       for (const text of instructions.slice(1)) {
         if (!automatic || state.status === "blocked") break;
@@ -546,37 +640,46 @@ $("replay").addEventListener("click", () => {
       }
     } finally {
       automatic = false;
-      controls();
     }
-  }, t("replayBusy")).then(loadRuns);
-});
-$("choose").addEventListener("click", () =>
-  perform(() => call("predict"), t("busyPredicting")),
-);
-$("execute").addEventListener("click", () =>
-  perform(
-    () => call("act", { fingerprint: state.page.fingerprint }),
-    t("busyExecuting"),
-  ),
-);
-$("auto").addEventListener("click", () =>
-  perform(async () => {
-    automatic = true;
-    controls();
-    try {
-      await runToSettle();
-    } finally {
-      automatic = false;
-    }
-  }, t("busyRunning")),
-);
-$("stop").addEventListener("click", () => {
-  automatic = false;
-  $("status").textContent = t("pausing");
-  controls();
-});
-$("lang").addEventListener("change", (event) => {
-  lang = STRINGS[event.target.value] ? event.target.value : "en";
+  }, t("replayBusy")).then(() => {
+    awaitNext();
+    loadRuns();
+  });
+}
+// A replay reads the whole stored record: list rows are summaries, and older records only keep the
+// first page in their trail.
+async function replayRun(id) {
+  if (busy) return;
+  let run;
+  try {
+    run = await fetch(`/api/runs/${encodeURIComponent(id)}`).then((r) => (r.ok ? r.json() : Promise.reject()));
+  } catch {
+    $("error").textContent = say("Unknown run");
+    $("error").hidden = false;
+    return;
+  }
+  const instructions = (run.plan?.length ? run.plan : (run.instructions || []).map((item) => item.text)).filter(
+    Boolean,
+  );
+  replay(run.start_url || run.history?.[0]?.url || run.url, instructions);
+}
+async function deleteRun(id) {
+  const response = await fetch(`/api/runs/${encodeURIComponent(id)}/delete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Demo-Token": token },
+    body: "{}",
+  });
+  if (!response.ok) {
+    $("error").textContent = say((await response.json()).error || "Request failed");
+    $("error").hidden = false;
+  }
+  if (openRunRecord?.id === id) closeRun();
+  loadRuns();
+}
+$("lang").addEventListener("click", (event) => {
+  const choice = event.target.closest("[data-lang]")?.dataset.lang;
+  if (!STRINGS[choice] || choice === lang) return;
+  lang = choice;
   try {
     localStorage.setItem(STORE.lang, lang);
   } catch {
@@ -585,6 +688,20 @@ $("lang").addEventListener("change", (event) => {
   applyLanguage();
   loadRuns();
 });
+// The viewport can be wider or taller than the letterboxed screenshot, and the boxes are placed in
+// percentages of the observed page, so their layer has to cover exactly the image as displayed.
+function placeTargets() {
+  const img = $("screenshot"),
+    layer = $("targets");
+  Object.assign(layer.style, {
+    left: `${img.offsetLeft}px`,
+    top: `${img.offsetTop}px`,
+    width: `${img.offsetWidth}px`,
+    height: `${img.offsetHeight}px`,
+  });
+}
+$("screenshot").addEventListener("load", placeTargets);
+new ResizeObserver(placeTargets).observe($("viewport"));
 $("overlays").addEventListener("change", () => {
   $("targets").hidden = !$("overlays").checked;
 });
@@ -611,8 +728,16 @@ $("choices").addEventListener("pointerleave", () =>
 );
 $("runs-list").addEventListener("click", (event) => {
   const id = event.target.closest("[data-run]")?.dataset.run;
-  if (id) showRun(id);
+  if (!id) return;
+  const action = event.target.closest("[data-run-action]")?.dataset.runAction;
+  if (action === "delete") return deleteRun(id);
+  if (action === "replay") return replayRun(id);
+  showRun(id);
 });
+$("runs-list").addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && event.target.matches(".run-row")) event.target.click();
+});
+$("run-replay").addEventListener("click", () => openRunRecord && replayRun(openRunRecord.id));
 // Opening the list is the refresh: the panel reloads whenever it is unfolded.
 $("runs-panel").addEventListener("toggle", (event) => {
   if (event.target.open) loadRuns();
@@ -635,9 +760,9 @@ $("run-export").addEventListener("click", () => {
   a.click();
   URL.revokeObjectURL(url);
 });
-$("target-url").addEventListener("change", remember);
-$("goal").addEventListener("change", remember);
-$("reuse").addEventListener("change", remember);
+$("target-url").addEventListener("change", () => remember());
+$("goal").addEventListener("change", () => remember());
+$("reuse").addEventListener("change", () => remember());
 $("download").addEventListener("click", () => {
   const { page, ...rest } = state;
   const blob = new Blob(
@@ -686,18 +811,21 @@ async function loadRuns() {
   $("runs-list").innerHTML = runs.length
     ? runs
         .map(
-          (run) => `<div class="run-row" data-run="${escape(run.id)}">
+          (run) => `<div class="run-row" role="button" tabindex="0" data-run="${escape(run.id)}">
             <span class="badge ${escape(run.status)}">${escape(badge(run.status))}</span>
-            <div class="run-main"><strong>${escape(shortUrl(run.url))}</strong><small>${escape((run.goal || "").slice(0, 96))}</small></div>
-            <span class="run-meta">${escape(t("actions", run.steps || 0))} · ${seconds(run.elapsed_ms)}</span>
+            <div class="run-main"><strong>${escape(shortUrl(run.url))}</strong><small>${escape((run.plan?.length ? run.plan.join(" → ") : run.goal || "").slice(0, 140))}</small></div>
+            <span class="run-stats">${escape(t("actions", run.steps || 0))} · ${seconds(run.elapsed_ms)}</span>
             <span class="run-time">${escape(when(run.started_at))}</span>
+            <span class="run-actions">
+              <button type="button" class="icon small" data-run-action="replay" title="${escape(t("replayRun"))}" aria-label="${escape(t("replayRun"))}" ${busy ? "disabled" : ""}>${ICONS.replay}</button>
+              <button type="button" class="icon small danger" data-run-action="delete" title="${escape(t("deleteRun"))}" aria-label="${escape(t("deleteRun"))}">${ICONS.trash}</button>
+            </span>
           </div>`,
         )
         .join("")
     : `<p class="muted">${escape(t("runsEmpty"))}</p>`;
 }
 
-let openRunRecord = null;
 async function showRun(id) {
   let record = null;
   try {
@@ -750,6 +878,7 @@ async function showRun(id) {
         .join("")
     : `<p class="muted">${escape(t("noTexts"))}</p>`;
   $("run-export").disabled = false;
+  $("run-replay").disabled = busy;
   $("run-detail").hidden = false;
 }
 
@@ -768,6 +897,10 @@ fetch("/api/state")
   .then((s) => {
     state = s;
     render();
+    if (state.page && !busy) {
+      $("goal").value = "";
+      awaitNext();
+    }
   })
   .catch(() => {
     $("status").textContent = t("unreachable");

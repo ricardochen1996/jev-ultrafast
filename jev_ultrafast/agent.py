@@ -8,6 +8,9 @@ from .browser import Browser, StalePage
 from .model import action_space, choose, field_context, field_text
 from .questions import MAX_STEPS, PROBE_SCROLLS
 
+# Distinct targets the executor may refuse on one unchanged page before the run stops.
+UNREACHABLE_LIMIT = 3
+
 
 class Agent:
     def __init__(self, url, goals, *, record_dir=None, screenshots=False, reuse=False):
@@ -40,6 +43,7 @@ class Agent:
             record=bool(self.record_dir),
             probe_scrolls=0,
             blocked_dones=0,
+            unreachable=[],
         )
         if self.record_dir:
             self.record_dir.mkdir(parents=True, exist_ok=True)
@@ -72,6 +76,7 @@ class Agent:
         state["plan_index"] = index
         state["decision"] = None
         state["status"] = "ready"
+        state["unreachable"] = []
         state["page"] = self.browser.observe(screenshot=self.screenshots)
         if state["started_at"] is None:
             state["started_at"] = time.perf_counter()
@@ -127,7 +132,14 @@ class Agent:
                 raise ValueError("This run has stopped. Start a fresh demo.")
             if len(state["decisions"]) >= MAX_STEPS * 2:
                 raise ValueError("Reached the demo's model-call budget")
-            state["decision"] = choose(state["page"], state["goal"], state["history"])
+            # Targets the executor just refused on this very page (covered, off screen) are not offered
+            # again: the same answer's next-best candidate is used instead of spinning on one choice.
+            fingerprint = state["page"]["fingerprint"]
+            avoid = {(o, t) for o, t, f in state.get("unreachable", []) if f == fingerprint}
+            if len(avoid) >= UNREACHABLE_LIMIT:
+                state["status"] = "blocked"
+                raise ValueError("The chosen targets could not be reached on this page. Stopped instead of retrying.")
+            state["decision"] = choose(state["page"], state["goal"], state["history"], avoid=avoid)
             state["decisions"].append(
                 {
                     **state["decision"],
@@ -216,7 +228,14 @@ class Agent:
                     self.pending_text = (context, text, helper)
                     state["text_calls"].append({**helper, "field": action["label"], "value": text})
             # Browser.act checks freshness immediately before input, including after text generation.
-            executed = state["browser"].act(action, page, text=text)
+            try:
+                executed = state["browser"].act(action, page, text=text)
+            except StalePage:
+                if decision.get("target") is not None:
+                    state.setdefault("unreachable", []).append(
+                        (decision["operation"], str(decision["target"]), page["fingerprint"])
+                    )
+                raise
             # Let an asynchronous page show the effect before the next observation judges it.
             state["browser"].settle(action["kind"])
             self.pending_text = None

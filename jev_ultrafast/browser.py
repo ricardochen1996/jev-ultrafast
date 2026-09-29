@@ -50,8 +50,7 @@ class Browser:
         ensure_daemon()
         existing = open_target(url) if reuse else None
         self.owned = existing is None
-        self.target = existing or cdp("Target.createTarget", url="about:blank", background=True)["targetId"]
-        self.session = cdp("Target.attachToTarget", targetId=self.target, flatten=True)["sessionId"]
+        self.attach(existing or cdp("Target.createTarget", url="about:blank", background=True)["targetId"])
         if self.owned:
             # The emulated viewport belongs to an owned tab; the tab you are watching keeps its own size.
             self.call("Emulation.setDeviceMetricsOverride", width=1120, height=780, deviceScaleFactor=1, mobile=False)
@@ -59,8 +58,6 @@ class Browser:
             # A reused tab can still carry an emulated viewport from an earlier owned run. Clear it so
             # this run works against the window the user actually sees, which is also its real width.
             self.call("Emulation.clearDeviceMetricsOverride")
-        # Keep rAF/menus rendering in a background tab, without activating the user's Chrome tab.
-        self.call("Emulation.setFocusEmulationEnabled", enabled=True)
         if self.owned:
             self.call("Page.navigate", url=url)
             deadline = time.monotonic() + 15
@@ -85,6 +82,49 @@ class Browser:
                 break
             time.sleep(0.3)
 
+    def attach(self, target):
+        self.target = target
+        self.session = cdp("Target.attachToTarget", targetId=target, flatten=True)["sessionId"]
+        # Keep rAF/menus rendering in a background tab, without activating the user's Chrome tab.
+        self.call("Emulation.setFocusEmulationEnabled", enabled=True)
+
+    def follow_opened_tab(self):
+        """Continue in the tab our own click opened, as a person would after a target=_blank link.
+
+        Only a page whose opener is the driven tab counts, so unrelated tabs are never taken over.
+        """
+        known, self.known_targets = getattr(self, "known_targets", None), None
+        if known is None:
+            return
+        opened = [
+            t["targetId"]
+            for t in cdp("Target.getTargets")["targetInfos"]
+            if t.get("type") == "page" and t.get("openerId") == self.target and t["targetId"] not in known
+        ]
+        if not opened:
+            return
+        previous = self.target
+        self.attach(opened[-1])
+        if self.owned:
+            self.call("Emulation.setDeviceMetricsOverride", width=1120, height=780, deviceScaleFactor=1, mobile=False)
+            # The results tab was ours too; leaving it behind would leak one tab per followed link.
+            cdp("Target.closeTarget", targetId=previous)
+        # A new tab starts as about:blank before its navigation commits; wait for the real page and
+        # for its action table to stop growing, bounded, like the first page of a run.
+        deadline = time.monotonic() + 10
+        previous, stable = -1, 0
+        while time.monotonic() < deadline:
+            try:
+                ready = self.evaluate("location.href!=='about:blank' && document.readyState==='complete'")
+                count = (self.evaluate(ACTION_COUNT) or 0) if ready else -1
+            except StalePage:
+                count = -1
+            stable = stable + 1 if count == previous and count > 2 else 0
+            previous = count
+            if stable >= 2:
+                break
+            time.sleep(0.1)
+
     def call(self, method, **params):
         try:
             return cdp(method, session_id=self.session, **params)
@@ -100,6 +140,10 @@ class Browser:
         return response.get("result", {}).get("value")
 
     def observe(self, screenshot=True):
+        previous = getattr(self, "target", None)
+        self.follow_opened_tab()
+        if self.target != previous:
+            self.after_input = None
         if getattr(self, "after_input", None):
             action, self.after_input = self.after_input, None
             # This is read-only and happens after execution was logged, even if navigation interrupts it.
@@ -220,6 +264,8 @@ class Browser:
             raise StalePage("Page changed since this decision. Observe again.")
         if action["kind"] == "wait":
             time.sleep(0.1)
+        elif action["kind"] == "click":
+            self.known_targets = {t["targetId"] for t in cdp("Target.getTargets")["targetInfos"]}
         result = browser_operation({"operation": "act", "session": self.session, "action": action, "text": text})
         self.after_input = action if action["kind"] != "wait" else None
         return result
@@ -281,12 +327,25 @@ def browser_operation(request):
               // Chips occupy the left of a multi-select and swallow the hit: the free space after
               // them is what opens the popup, which is where a person clicks too.
               if (action.aim==='free') x=r.x+r.width-Math.max(8,Math.min(24,r.width*0.12));
-              const y=r.y+r.height/2;
+              let y=r.y+r.height/2;
               const sized = r.width>0 && r.height>0;
-              const onScreen = sized && x>=0 && y>=0 && x<innerWidth && y<innerHeight;
+              const onScreen = (px,py) => sized && px>=0 && py>=0 && px<innerWidth && py<innerHeight;
+              const at = (px,py) => onScreen(px,py) ? document.elementFromPoint(px,py) : null;
+              let hit = at(x,y);
+              // The box centre of a wrapped inline link can fall between its line boxes, onto the
+              // parent or a neighbour. Aim at the element's own painted boxes, largest first, and
+              // take the first point where the element itself receives the hit.
+              if (!(hit && e.contains(hit))) {
+                const boxes=[...e.getClientRects(),
+                  ...[...e.querySelectorAll('*')].slice(0,40).map(c=>c.getBoundingClientRect())]
+                  .filter(b=>b.width>=2 && b.height>=2).sort((a,b)=>b.width*b.height-a.width*a.height);
+                for (const b of boxes) {
+                  const px=b.x+b.width/2, py=b.y+b.height/2, h=at(px,py);
+                  if (h && e.contains(h)) { x=px; y=py; hit=h; break; }
+                }
+              }
               // A wrapper of the control may own the hit point (label, input group, picker shell);
               // an unrelated element on top of it is still a covered control and stays rejected.
-              const hit = onScreen ? document.elementFromPoint(x,y) : null;
               const uncovered = !!hit && (e.contains(hit) || hit.contains(e));
               if (uncovered) {
                 if (!e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})) return null;
