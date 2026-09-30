@@ -6,6 +6,7 @@ import sys
 import time
 from pathlib import Path
 
+from browser_harness import helpers
 from browser_harness.admin import ensure_daemon
 from browser_harness.helpers import cdp
 
@@ -83,7 +84,47 @@ def startup_target(deadline=STARTUP_TAB_SECONDS):
         time.sleep(0.05)
 
 
-def close_spare_blank_tabs(keep):
+def daemon_tab():
+    """The blank tab the connection layer already opened for this run, or None.
+
+    A named daemon gives every caller a dedicated tab of its own before anything asks for one. Driving
+    that tab instead of creating another is what keeps a run from adding a blank tab to a browser
+    someone is using. Only a named daemon's tab qualifies: the default daemon attaches to a page the
+    browser already had, and that page is not ours to navigate or close.
+    """
+    if helpers.NAME == "default":
+        return None
+    for attempt in range(2):
+        try:
+            tab = helpers.current_tab()
+            break
+        except Exception:
+            if attempt:
+                return None
+            # An earlier run closed the daemon's tab along with its own. The daemon replaces a lost
+            # tab the next time its own session is used, so one harmless call gives it a fresh one
+            # now, instead of whenever a later call happens to need it.
+            try:
+                cdp("Runtime.evaluate", expression="0")
+            except Exception:
+                return None
+    return tab["targetId"] if blank_page(tab.get("url")) else None
+
+
+def run_spares(pages, daemon):
+    """The blank tabs a run may close once its own tab shows a page.
+
+    The daemon's dedicated tab is always ours. The other blank tabs are only the leftovers of a
+    launch when blank tabs are all the browser holds: a browser that also shows real pages is one a
+    person is using, and a blank new-tab page there is theirs, opened on purpose.
+    """
+    spares = {daemon} if daemon else set()
+    if pages and all(blank_page(t.get("url")) for t in pages):
+        spares.update(t["targetId"] for t in pages)
+    return spares
+
+
+def close_spare_blank_tabs(keep, only=None):
     """Close the blank tabs nobody is driving, now that one tab is on its page.
 
     A launch leaves the browser's own startup tab behind: the connection layer gives every caller its
@@ -91,12 +132,16 @@ def close_spare_blank_tabs(keep):
     attached is never the tab being driven. Left alone it is the second tab you see when a run
     starts. Only a blank tab counts, and only while a page that is not blank stays open beside it,
     so this never leaves the browser showing nothing and never closes a page a person was reading.
+    ``only`` limits the closing to the tabs a run itself is responsible for.
     """
     try:
         pages = [t for t in cdp("Target.getTargets")["targetInfos"] if t.get("type") == "page"]
     except Exception:
         return
-    spare = [t for t in pages if t["targetId"] != keep and blank_page(t.get("url"))]
+    spare = [
+        t for t in pages
+        if t["targetId"] != keep and blank_page(t.get("url")) and (only is None or t["targetId"] in only)
+    ]
     if not any(not blank_page(t.get("url")) for t in pages):
         return  # every tab is blank, so any of them may be all the browser has to show
     for target in spare:
@@ -144,15 +189,19 @@ def active_tabs(limit=12):
 class Browser:
     def __init__(self, url, reuse=False):
         ensure_daemon()
+        daemon = daemon_tab()
+        spares = run_spares([t for t in cdp("Target.getTargets")["targetInfos"] if t.get("type") == "page"], daemon)
         existing = open_target(url) if reuse else None
-        # The tab a just-launched browser opened itself is the tab this run drives, so the launch
-        # leaves one tab on screen instead of one blank tab beside the page. A tab this run creates
-        # asks for the background and is put back behind the user's view; a startup tab already is
-        # the view, so the restore below never has anything to restore for it.
-        startup = startup_target() if existing is None else None
+        # The tab the connection layer opened for this run is the tab it drives, so no second blank
+        # tab is ever created beside it. Without one, the tab a just-launched browser opened itself is
+        # used, so the launch leaves one tab on screen instead of one blank tab beside the page. A tab
+        # this run creates or adopts sits in the background and is put back behind the user's view; a
+        # startup tab already is the view, so the restore below never has anything to restore for it.
+        own = (daemon or startup_target()) if existing is None else None
+        startup = own if own is not None and own != daemon else None
         self.owned = existing is None and startup is None
         watching = active_tabs() if self.owned else {}
-        self.attach(existing or startup or cdp("Target.createTarget", url="about:blank", background=True)["targetId"])
+        self.attach(existing or own or cdp("Target.createTarget", url="about:blank", background=True)["targetId"])
         if self.owned:
             # Put the tab the user was reading back in front, in the window this tab landed in.
             try:
@@ -197,9 +246,10 @@ class Browser:
             if stable >= 2 and count >= 1:
                 break
             time.sleep(0.3)
-        if self.owned:
-            # The page is up, so the blank tab the browser opened for itself has done its job.
-            close_spare_blank_tabs(self.target)
+        # The page is up, so the blank tabs this run is responsible for have done their job: the
+        # daemon's tab when a reused tab is driven instead, and a launch's startup tab. A blank tab in
+        # a browser someone is using is theirs and stays.
+        close_spare_blank_tabs(self.target, only=spares)
 
     def attach(self, target):
         self.target = target

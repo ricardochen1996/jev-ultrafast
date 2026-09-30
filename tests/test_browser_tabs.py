@@ -141,3 +141,83 @@ def test_a_browser_that_cannot_be_read_is_left_exactly_as_it_is(monkeypatch):
 
     monkeypatch.setattr(browser, "cdp", cdp)
     browser.close_spare_blank_tabs("driven")  # no raise: cleanup never breaks the run it follows
+
+
+def named_daemon(monkeypatch, tab):
+    """A named daemon whose dedicated tab is ``tab``; an exception stands for a tab that is gone."""
+
+    def current_tab():
+        if isinstance(tab, Exception):
+            raise tab
+        return tab
+
+    monkeypatch.setattr(browser.helpers, "NAME", "jev-sidecar-1")
+    monkeypatch.setattr(browser.helpers, "current_tab", current_tab)
+
+
+def test_the_tab_a_named_daemon_opened_is_the_tab_to_drive(monkeypatch):
+    # Driving it is what keeps a run from adding a blank tab of its own to the browser.
+    named_daemon(monkeypatch, {"targetId": "daemon", "url": "about:blank"})
+    assert browser.daemon_tab() == "daemon"
+
+
+def test_the_default_daemon_tab_is_a_page_the_browser_already_had(monkeypatch):
+    monkeypatch.setattr(browser.helpers, "NAME", "default")
+    monkeypatch.setattr(browser.helpers, "current_tab", lambda: {"targetId": "theirs", "url": "about:blank"})
+    assert browser.daemon_tab() is None
+
+
+def test_a_daemon_tab_that_shows_a_page_is_not_taken(monkeypatch):
+    named_daemon(monkeypatch, {"targetId": "daemon", "url": "https://example.test/"})
+    assert browser.daemon_tab() is None
+
+
+def test_a_daemon_tab_an_earlier_run_closed_is_replaced_then_driven(monkeypatch):
+    # The daemon replaces its lost tab when its own session is next used; waiting for that to happen
+    # later would leave a blank tab beside the one this run creates.
+    answers = [KeyError("targetId"), {"targetId": "replacement", "url": "about:blank"}]
+    calls = []
+
+    def current_tab():
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(browser.helpers, "NAME", "jev-sidecar-1")
+    monkeypatch.setattr(browser.helpers, "current_tab", current_tab)
+    cdp_stub(monkeypatch, [targets()], calls)
+    assert browser.daemon_tab() == "replacement"
+    assert [method for method, params in calls if "session_id" not in params] == ["Runtime.evaluate"]
+
+
+def test_a_daemon_that_cannot_replace_its_tab_means_a_tab_of_our_own(monkeypatch):
+    named_daemon(monkeypatch, KeyError("targetId"))
+    cdp_stub(monkeypatch, [targets()])
+    assert browser.daemon_tab() is None
+
+
+def test_in_a_browser_someone_uses_only_the_daemon_tab_is_ours(monkeypatch):
+    pages = [
+        {"targetId": "theirs", "url": "https://example.test/"},
+        {"targetId": "their-new-tab", "url": "chrome://newtab/"},
+        {"targetId": "daemon", "url": "about:blank"},
+    ]
+    assert browser.run_spares(pages, "daemon") == {"daemon"}
+    assert browser.run_spares(pages, None) == set()
+
+
+def test_in_a_launched_browser_every_blank_tab_is_a_leftover(monkeypatch):
+    pages = [{"targetId": "startup", "url": "about:blank"}, {"targetId": "daemon", "url": "about:blank"}]
+    assert browser.run_spares(pages, "daemon") == {"startup", "daemon"}
+
+
+def test_a_blank_new_tab_of_their_own_survives_the_run(monkeypatch):
+    calls = []
+    cdp_stub(
+        monkeypatch,
+        [targets(("theirs", "https://example.test/"), ("their-new-tab", "chrome://newtab/"), ("driven", "file:///page.html"))],
+        calls,
+    )
+    browser.close_spare_blank_tabs("driven", only=set())
+    assert [c for c in calls if c[0] == "Target.closeTarget"] == []
