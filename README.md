@@ -114,6 +114,7 @@ Some interfaces put real controls where pointer input cannot land. The snapshot 
 - **Custom selects.** A focusable box that names itself a picker is treated as a trigger, not a text field. Clicking aims at the free space after any chips, which is where a person clicks, and once the popup is open its option rows are offered as targets.
 - **Wrapped links.** The box centre of a link that wraps across lines can fall between its lines, onto a neighbour. The executor aims at the element's own painted boxes and uses the first point the element itself receives.
 - **New tabs.** A link with `target=_blank` opens another tab. When the driven tab opened it, the run continues there, like a person following the link. Unrelated tabs are never taken over.
+- **One tab per launch.** The connection layer gives every caller its own tab, so the browser's startup tab is left over the moment a run begins. It is closed once the driven tab is on its page — never before, never if the browser holds nothing else, and never at all when it holds a page someone is reading.
 - **Refused targets.** A target the executor refuses on an unchanged page is not offered again; the same answer's next-best candidate is used. After three refusals on one page the run stops instead of spinning.
 - **Dialogs.** While a modal is on screen, `DONE` is refused: the page still has something to say. If the choice insists, the run reports `BLOCKED` rather than a success nobody has seen.
 

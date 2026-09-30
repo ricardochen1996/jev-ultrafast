@@ -15,6 +15,10 @@ MARKER = f"(() => {{ const state={READ_STATE}; return state?.marker ?? null; }})
 # Component libraries paint their controls after readyState completes. Looking too soon is how a
 # page reports a menu of one item, so a run gives the page a moment before it looks.
 FIRST_LOOK_PAUSE = 2.0
+# What a tab shows before a page loads: a launched browser opens one of these itself.
+BLANK_PAGES = {"about:blank", "about:newtab", "chrome://newtab", "chrome://new-tab-page"}
+# How long a just-launched browser has to publish that first tab before the run makes its own.
+STARTUP_TAB_SECONDS = 5.0
 
 # Count of actions the current page would offer. Cheap enough to poll while a page assembles.
 ACTION_COUNT = f"(() => {{ const state={READ_STATE}; return state ? state.actions.length : 0; }})()"
@@ -47,6 +51,59 @@ def open_target(url):
         if target.get("type") == "page" and same_page(target.get("url"), url):
             return target["targetId"]
     return None
+
+
+def blank_page(url):
+    """True for a tab that is showing nothing yet, so driving it costs nobody's view."""
+    trimmed = (url or "").split("#", 1)[0].split("?", 1)[0]
+    return trimmed.rstrip("/") in BLANK_PAGES
+
+
+def startup_target(deadline=STARTUP_TAB_SECONDS):
+    """The one blank tab a browser opens itself at launch, or None.
+
+    A launched browser already owns exactly one tab before anything attaches to it, and that tab is
+    showing nothing. Driving it is what a person does with a new window: the run happens in the tab
+    that is already on screen, and no second blank tab is left behind. Only a browser whose whole
+    page list is that single blank tab matches, so a browser someone is browsing with never does --
+    unless it holds nothing but one blank tab, which is a browser with nothing to take.
+
+    The page list can trail the DevTools endpoint by a moment, so this waits for the browser to
+    publish its first tab before deciding; a browser that still shows nothing gets a tab of our own.
+    """
+    deadline = time.monotonic() + deadline
+    while True:
+        pages = [t for t in cdp("Target.getTargets")["targetInfos"] if t.get("type") == "page"]
+        if len(pages) > 1 or (pages and not blank_page(pages[0].get("url"))):
+            return None
+        if pages:
+            return pages[0]["targetId"]
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(0.05)
+
+
+def close_spare_blank_tabs(keep):
+    """Close the blank tabs nobody is driving, now that one tab is on its page.
+
+    A launch leaves the browser's own startup tab behind: the connection layer gives every caller its
+    own tab (named daemons must not share one), so the tab the browser opened before anything
+    attached is never the tab being driven. Left alone it is the second tab you see when a run
+    starts. Only a blank tab counts, and only while a page that is not blank stays open beside it,
+    so this never leaves the browser showing nothing and never closes a page a person was reading.
+    """
+    try:
+        pages = [t for t in cdp("Target.getTargets")["targetInfos"] if t.get("type") == "page"]
+    except Exception:
+        return
+    spare = [t for t in pages if t["targetId"] != keep and blank_page(t.get("url"))]
+    if not any(not blank_page(t.get("url")) for t in pages):
+        return  # every tab is blank, so any of them may be all the browser has to show
+    for target in spare:
+        try:
+            cdp("Target.closeTarget", targetId=target["targetId"])
+        except Exception:
+            pass  # a tab that is already gone needs nothing here
 
 
 def active_tabs(limit=12):
@@ -88,9 +145,14 @@ class Browser:
     def __init__(self, url, reuse=False):
         ensure_daemon()
         existing = open_target(url) if reuse else None
-        self.owned = existing is None
+        # The tab a just-launched browser opened itself is the tab this run drives, so the launch
+        # leaves one tab on screen instead of one blank tab beside the page. A tab this run creates
+        # asks for the background and is put back behind the user's view; a startup tab already is
+        # the view, so the restore below never has anything to restore for it.
+        startup = startup_target() if existing is None else None
+        self.owned = existing is None and startup is None
         watching = active_tabs() if self.owned else {}
-        self.attach(existing or cdp("Target.createTarget", url="about:blank", background=True)["targetId"])
+        self.attach(existing or startup or cdp("Target.createTarget", url="about:blank", background=True)["targetId"])
         if self.owned:
             # Put the tab the user was reading back in front, in the window this tab landed in.
             try:
@@ -104,8 +166,10 @@ class Browser:
             # The emulated viewport belongs to an owned tab; the tab you are watching keeps its own size.
             self.call("Emulation.setDeviceMetricsOverride", width=1120, height=780, deviceScaleFactor=1, mobile=False)
         else:
-            # A reused tab can still carry an emulated viewport from an earlier owned run. Clear it so
-            # this run works against the window the user actually sees, which is also its real width.
+            # A tab this run did not create keeps the size it really has: the tab you are watching
+            # when reusing yours, and the window a launch already put on screen when the startup tab
+            # was adopted. Either way it can still carry an emulated viewport from an earlier owned
+            # run, so that is cleared rather than replaced.
             self.call("Emulation.clearDeviceMetricsOverride")
         if self.owned:
             self.call("Page.navigate", url=url)
@@ -133,6 +197,9 @@ class Browser:
             if stable >= 2 and count >= 1:
                 break
             time.sleep(0.3)
+        if self.owned:
+            # The page is up, so the blank tab the browser opened for itself has done its job.
+            close_spare_blank_tabs(self.target)
 
     def attach(self, target):
         self.target = target
