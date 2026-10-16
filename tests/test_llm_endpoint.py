@@ -241,3 +241,18 @@ def test_plain_mode_without_a_text_model_stops_with_a_readable_message(monkeypat
     with pytest.raises(SystemExit, match="text model cannot decide"):
         demo.resolve_decisions()
 
+
+class StubAgent:
+    """Stands in for a live run: the snapshot keeps the per-step decisions under their own name."""
+
+    def snapshot(self):
+        return {"page": {"url": "https://example.test/form"}, "status": "done", "history": [{"action": "click"}],
+                "decisions": [{"choice": "e1", "operation": "CLICK", "latency_ms": 12}], "elapsed_ms": 34}
+
+
+def test_the_reported_mode_does_not_shadow_the_per_step_decisions(monkeypatch):
+    monkeypatch.setattr(demo, "AGENT", StubAgent())
+    monkeypatch.setattr(demo, "DECISIONS", {"label": "chat:some-chat-model"})
+    state = demo.response_state()
+    assert state["decision_model"] == "chat:some-chat-model"
+    assert state["decisions"] == [{"choice": "e1", "operation": "CLICK", "latency_ms": 12}]

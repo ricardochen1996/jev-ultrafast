@@ -445,7 +445,7 @@ function render() {
   // Target boxes are placed in percentages of the observed viewport, so the frame has to match
   // that viewport instead of one fixed size: the window the run happens in decides it.
   if (state.page?.w && state.page?.h) $("viewport").style.aspectRatio = `${state.page.w} / ${state.page.h}`;
-  $("helper").textContent = `${t("title")} · ${state.text_model}`;
+  $("helper").textContent = `${t("title")} · ${state.decision_model || state.text_model}`;
   $("plan").innerHTML = (state.plan || [])
     .map(
       (goal, i) =>

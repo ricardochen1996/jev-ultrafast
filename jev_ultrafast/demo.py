@@ -90,7 +90,9 @@ def response_state():
     return {
         **state,
         "text_model": os.environ.get("TEXT_MODEL", "deepseek-chat"),
-        "decisions": DECISIONS.get("label"),
+        # Never call this "decisions": the state already carries the per-step decisions under that
+        # name, and overwriting it breaks the page's own reading of a finished run.
+        "decision_model": DECISIONS.get("label"),
         "max_steps": MAX_STEPS,
         "run_id": (RUN.get("record") or {}).get("id"),
         "run_url": RUN.get("url"),
