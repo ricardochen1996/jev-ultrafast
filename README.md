@@ -66,6 +66,25 @@ Every run is stored under `artifacts/runs/` with its goal, actions, decisions, g
 
 `TYPESAFE_BASE_URL` accepts any endpoint that speaks the System One protocol, so the hosted API is a default rather than a requirement: OpenCode's gateway serves the same request and response shape at `https://opencode.ai/zen/v1/systemone`. Chrome connects through [Browser Harness](https://github.com/browser-use/browser-harness), installed by `uv sync`. Run `uv run browser-harness --doctor` if it needs connecting. Allow remote debugging in Chrome when prompted.
 
+There are two ways to answer that protocol, and the loop cannot tell them apart. `JEV_ENABLED` in `.env` picks one:
+
+- **Jev mode** (`JEV_ENABLED=true`, the default) — the hosted model, or any other System One endpoint. Nothing extra to run: set `TYPESAFE_API_KEY` and `TYPESAFE_MODEL`.
+- **Plain-model mode** (`JEV_ENABLED=false`) — a chat model plays the same role, with no Jev in the loop. The inspector serves the protocol on a loopback port for the session, so the only settings are the `TEXT_MODEL_*` ones it already needs for typing:
+
+  ```bash
+  # .env: JEV_ENABLED=false
+  uv run jev
+  ```
+
+  [llm_endpoint.py](jev_ultrafast/llm_endpoint.py) is the contract: what the endpoint sends the model, the one JSON object the model must send back (`{"action": "<one offered key>", "confidence": <0..1>}`), what happens to an unreadable reply, and the factored answers the caller reads. The same endpoint runs on its own for anyone who wants it in a separate process or pointed at another model:
+
+  ```bash
+  uv run python -m jev_ultrafast.llm_endpoint --port 8770
+  TYPESAFE_BASE_URL=http://127.0.0.1:8770/v1/systemone uv run jev
+  ```
+
+  Measured on one Chinese procurement console, same goal and one attempt per run: the hosted model finished 2 of 2 in 3 steps and about 5 s, the chat model 2 of 3 in 3–4 steps and 10–14 s.
+
 `TEXT_MODEL_API_KEY` is an OpenRouter key in the example configuration. The upstream measurements used `inception/mercury-2.5` with reasoning disabled; the recording above used `mimo-v2.6-flash`. Gemini, GLM, and DeepSeek can also use the OpenAI-compatible text helper; configure the appropriate model, endpoint, and reasoning setting.
 
 ## Use the library
