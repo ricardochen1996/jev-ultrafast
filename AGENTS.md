@@ -3,7 +3,7 @@
 Read README.md before editing. Keep the loop small: page -> indexed elements -> operation + target -> execution.
 
 - The input is one natural-language goal. Do not add site-specific plans or hardcoded field values.
-- TypeSafe chooses an operation and operation-specific target heads in one request. Consume only the selected operation's target.
+- The decision endpoint answers with an operation and operation-specific target heads in one request. Consume only the selected operation's target. Either the hosted Jev or the chat-model endpoint (JEV_ENABLED=false, jev_ultrafast/llm_endpoint.py) can serve it; the loop cannot tell them apart, and neither may emit selectors or coordinates.
 - Targets must map to observed elements and supported operations. Never let the model emit selectors or executable code.
 - TYPE_TEXT invokes the text LLM. Cache a stale retry's value only while its entire helper input is identical.
 - Never retry a browser mutation. Log execution before observing its result.

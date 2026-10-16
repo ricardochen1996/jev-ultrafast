@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 
 from .agent import Agent
 from .browser import LostSession, StalePage
+from .llm_endpoint import Endpoint, chooser_from_env, load_env_file, serve_in_thread
 from .model import NoTextValue
 from .questions import MAX_STEPS
 
@@ -25,6 +26,7 @@ LOCK = threading.Lock()
 AGENT = None
 RUN = {}
 NOTICE = {}
+DECISIONS = {}
 RUNS = Path.cwd() / "artifacts" / "runs"
 SNAPSHOT_FIELDS = (
     "id",
@@ -43,12 +45,39 @@ SNAPSHOT_FIELDS = (
 
 
 def load_environment():
-    path = Path.cwd() / ".env"
-    if path.exists():
-        for line in path.read_text().splitlines():
-            if "=" in line and not line.startswith("#"):
-                key, value = line.split("=", 1)
-                os.environ.setdefault(key, value)
+    load_env_file()
+
+
+def jev_enabled():
+    """Whether the configuration asks Jev to decide, rather than the text model."""
+    return os.environ.get("JEV_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def resolve_decisions():
+    """Point the loop at the endpoint this configuration asks for, and say which one it is.
+
+    With ``JEV_ENABLED=true`` the loop talks to ``TYPESAFE_BASE_URL``, exactly as before. With it
+    off, the chat-model endpoint is served on a loopback port for this session and the loop talks to
+    that instead, so the only thing to configure is the text model.
+    """
+    if jev_enabled():
+        if not os.environ.get("TYPESAFE_API_KEY"):
+            raise SystemExit(
+                "JEV_ENABLED is true but TYPESAFE_API_KEY is empty. Set the Jev key, "
+                "or set JEV_ENABLED=false so the text model decides."
+            )
+        DECISIONS["label"] = f"jev:{os.environ.get('TYPESAFE_MODEL', 'jev-latest')}"
+        return
+    try:
+        chooser, page_chars = chooser_from_env()
+    except ValueError as error:
+        raise SystemExit(f"JEV_ENABLED is false and the text model cannot decide: {error}") from None
+    endpoint = Endpoint(chooser, page_chars)
+    _server, url = serve_in_thread(endpoint, port=int(os.environ.get("LLM_SERVER_PORT", "8770")))
+    os.environ["TYPESAFE_BASE_URL"] = url
+    os.environ["TYPESAFE_MODEL"] = chooser.model
+    DECISIONS["label"] = endpoint.label()
+    DECISIONS["endpoint"] = endpoint
 
 
 def timestamp():
@@ -61,6 +90,7 @@ def response_state():
     return {
         **state,
         "text_model": os.environ.get("TEXT_MODEL", "deepseek-chat"),
+        "decisions": DECISIONS.get("label"),
         "max_steps": MAX_STEPS,
         "run_id": (RUN.get("record") or {}).get("id"),
         "run_url": RUN.get("url"),
@@ -407,9 +437,11 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     load_environment()
+    resolve_decisions()
     atexit.register(close_browser)
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"Browser Ultrafast: {ORIGIN}", flush=True)
+    print(f"  decisions: {DECISIONS['label']}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
