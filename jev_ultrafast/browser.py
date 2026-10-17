@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -23,6 +24,49 @@ STARTUP_TAB_SECONDS = 5.0
 
 # Count of actions the current page would offer. Cheap enough to poll while a page assembles.
 ACTION_COUNT = f"(() => {{ const state={READ_STATE}; return state ? state.actions.length : 0; }})()"
+
+# What an owned tab is laid out in when the browser has no window to take a size from: a headless
+# browser's own default is a small one, and a page laid out in it offers less than the page has.
+HEADLESS_VIEWPORT = (1120, 780)
+# The display a headless browser starts with, whatever window it was given.
+HEADLESS_DISPLAY = (800, 600)
+# Pins every owned tab to one size whatever the window is, for a caller that wants a fixed frame:
+# ``JEV_VIEWPORT=1280x800``.
+VIEWPORT_ENV = "JEV_VIEWPORT"
+
+
+def pinned_viewport(environ=None):
+    """The (width, height) ``JEV_VIEWPORT`` names, or None when the caller pinned nothing.
+
+    Read before anything is opened, attached to, or navigated: a size that cannot be read has to fail
+    the run, not leave a tab behind or a stale emulated viewport on someone's page.
+    """
+    raw = str((os.environ if environ is None else environ).get(VIEWPORT_ENV, "")).strip()
+    if not raw:
+        return None
+    width, separator, height = raw.lower().replace("*", "x").partition("x")
+    width, height = width.strip(), height.strip()
+    if not (separator and width.isdecimal() and height.isdecimal()):
+        raise ValueError(f"{VIEWPORT_ENV} must be WIDTHxHEIGHT, for instance 1120x780, not {raw!r}")
+    if int(width) < 1 or int(height) < 1:
+        raise ValueError(f"{VIEWPORT_ENV} must be a positive size, for instance 1120x780, not {raw!r}")
+    return int(width), int(height)
+
+
+def names_itself_headless(version):
+    """True when the browser's own version answer says it is headless."""
+    return "Headless" in str((version or {}).get("userAgent") or "")
+
+
+def shows_headless_display(size):
+    """True when the page reports the display a headless browser starts with.
+
+    ``--user-agent`` replaces the product string wholesale, so a headless launch that keeps the word
+    out is still recognised by the display it reports: headless Chrome reports an 800x600 virtual
+    screen, where a browser on screen reports the screen it is on.
+    """
+    return list(size or []) == list(HEADLESS_DISPLAY)
+
 
 class StalePage(ValueError):
     """A decision no longer refers to the observed page."""
@@ -189,6 +233,8 @@ def active_tabs(limit=12):
 class Browser:
     def __init__(self, url, reuse=False):
         ensure_daemon()
+        # A size the caller pinned is read before anything is opened, attached to, or navigated.
+        self.viewport = pinned_viewport()
         daemon = daemon_tab()
         spares = run_spares([t for t in cdp("Target.getTargets")["targetInfos"] if t.get("type") == "page"], daemon)
         existing = open_target(url) if reuse else None
@@ -211,15 +257,11 @@ class Browser:
             previous = watching.get(window)
             if previous and previous != self.target:
                 cdp("Target.activateTarget", targetId=previous)
-        if self.owned:
-            # The emulated viewport belongs to an owned tab; the tab you are watching keeps its own size.
-            self.call("Emulation.setDeviceMetricsOverride", width=1120, height=780, deviceScaleFactor=1, mobile=False)
-        else:
-            # A tab this run did not create keeps the size it really has: the tab you are watching
-            # when reusing yours, and the window a launch already put on screen when the startup tab
-            # was adopted. Either way it can still carry an emulated viewport from an earlier owned
-            # run, so that is cleared rather than replaced.
-            self.call("Emulation.clearDeviceMetricsOverride")
+        # The viewport this tab is laid out in: what the caller pinned, or the size of the window it
+        # was opened in -- except in a browser that has no window, which gets one a page fits in.
+        if self.owned and self.viewport is None and self.headless_browser():
+            self.viewport = HEADLESS_VIEWPORT
+        self.pin_viewport()
         if self.owned:
             self.call("Page.navigate", url=url)
             deadline = time.monotonic() + 15
@@ -257,6 +299,42 @@ class Browser:
         # Keep rAF/menus rendering in a background tab, without activating the user's Chrome tab.
         self.call("Emulation.setFocusEmulationEnabled", enabled=True)
 
+    def headless_browser(self):
+        """True when the browser behind this run has no window to take a viewport from.
+
+        The browser names itself headless in its product string, and one that keeps the word out
+        (``--user-agent`` replaces it) still reports the display it was started with.
+        """
+        try:
+            if names_itself_headless(cdp("Browser.getVersion")):
+                return True
+        except Exception:
+            return False  # a browser that cannot say keeps the size it has
+        try:
+            return shows_headless_display(self.evaluate("[screen.width,screen.height]"))
+        except Exception:
+            return False
+
+    def pin_viewport(self):
+        """Lay the driven tab out in this run's viewport, or leave it the size it really has.
+
+        Only a tab this run created or adopted is laid out in that viewport. A tab this run does not
+        own -- the one you are watching when it reuses yours, or the window a launch already put on
+        screen when the startup tab was adopted -- keeps the size it really has: this asks for an
+        emulated viewport to be cleared rather than setting one. A clear reaches the session that asks
+        for it, so an override an earlier run's session left on the tab goes away with that session.
+        """
+        if self.owned and self.viewport is not None:
+            self.call(
+                "Emulation.setDeviceMetricsOverride",
+                width=self.viewport[0],
+                height=self.viewport[1],
+                deviceScaleFactor=1,
+                mobile=False,
+            )
+        else:
+            self.call("Emulation.clearDeviceMetricsOverride")
+
     def follow_opened_tab(self):
         """Continue in the tab our own click opened, as a person would after a target=_blank link.
 
@@ -275,7 +353,7 @@ class Browser:
         previous = self.target
         self.attach(opened[-1])
         if self.owned:
-            self.call("Emulation.setDeviceMetricsOverride", width=1120, height=780, deviceScaleFactor=1, mobile=False)
+            self.pin_viewport()
             # The results tab was ours too; leaving it behind would leak one tab per followed link.
             cdp("Target.closeTarget", targetId=previous)
         # A new tab starts as about:blank before its navigation commits; wait for the real page and
@@ -475,7 +553,7 @@ def browser_operation(request):
         kind = action["kind"]
         if kind == "scroll":
             # Wheel at the viewport centre: that is the panel the snapshot checked for scrollability.
-            size = evaluate("[innerWidth,innerHeight]") or [1120, 780]
+            size = evaluate("[innerWidth,innerHeight]") or list(HEADLESS_VIEWPORT)
             call(
                 "Input.dispatchMouseEvent",
                 type="mouseWheel",
