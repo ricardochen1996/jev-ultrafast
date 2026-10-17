@@ -111,6 +111,8 @@ uv run --env-file .env python examples/run.py \
 
 `uv run --env-file .env python examples/flights.py --keep-open` performs the flight search, checks the actual route/date/results, and saves its trace. It does not select or book a flight.
 
+A tab the run owns is laid out in the window it was opened in, so the page fills the window you see. A headless browser has no window to take that size from, so its owned tabs keep a `1120x780` viewport; `JEV_VIEWPORT=1280x800` pins every owned tab to the size it names, whatever the window is.
+
 ## Why it moves
 
 - **One request per decision cycle.** Operation and target heads share the same observed state.

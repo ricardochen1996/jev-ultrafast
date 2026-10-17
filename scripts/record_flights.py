@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import json
+import os
 import sys
 import threading
 import time
@@ -21,6 +22,9 @@ source_hashes = {
     for p in (Path(__file__).resolve().parents[1] / "jev_ultrafast").iterdir()
     if p.suffix in {".py", ".js"}
 }
+# The footage is one fixed 1120x780 frame -- render_demo.py crops exactly that -- so the recording
+# says which viewport it is of, on every tab the run opens, instead of following the window.
+os.environ["JEV_VIEWPORT"] = "1120x780"
 agent = Agent(URL, GOALS)
 (folder / "frames").mkdir(exist_ok=True)
 (folder / "frames" / "000000.jpg").write_bytes(
