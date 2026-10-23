@@ -131,6 +131,7 @@ A tab the run owns is laid out in the window it was opened in, so the page fills
 
 Some interfaces put real controls where pointer input cannot land. The snapshot offers them anyway, and the executor handles each case from the observed node:
 
+- **Plain cells.** A score, rating, or calendar cell carries no role, no tabindex and no href, and names itself with a single character — so a role query and the plain-row pass both missed it. It is offered when it belongs to a cluster of identical one-character cells, which is what a control cluster looks like; a lone character on the page is still just text.
 - **Clipped actions.** A control inside a container with `overflow: hidden` — an overflow menu, a pinned action column — is offered as its own target instead of only behind a trigger. A popup that a synthetic click cannot open no longer hides the actions it holds.
 - **Custom selects.** A focusable box that names itself a picker is treated as a trigger, not a text field. Clicking aims at the free space after any chips, which is where a person clicks, and once the popup is open its option rows are offered as targets.
 - **Wrapped links.** The box centre of a link that wraps across lines can fall between its lines, onto a neighbour. The executor aims at the element's own painted boxes and uses the first point the element itself receives.

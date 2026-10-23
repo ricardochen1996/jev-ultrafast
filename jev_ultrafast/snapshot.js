@@ -164,18 +164,47 @@
   const closable=/(^|[-_])(close|clear|remove|dismiss)([-_]|$)/i, taken=new Set(actions.map(a=>a.node));
   // Rows a component library draws as plain elements: a menu item, a list row, a card. They carry no
   // role, no tabindex and no href, so nothing above finds them, yet a person clicks them all day.
+  // A score, rating, or calendar cell has the same shape and a one-character name, so it is offered
+  // too — provided it sits in a group of identical cells, which is what a control cluster looks like
+  // and what a lone character on the page does not.
   const rows=[];
-  for (const e of document.querySelectorAll('div,li,span')) {
+  const clustered = e => {
+    const box=e.parentElement;
+    if (!box) return false;
+    let same=0;
+    for (const sibling of box.children) {
+      if (sibling.tagName!==e.tagName || sibling.className!==e.className) continue;
+      if ((sibling.innerText||'').replace(/\s+/g,' ').trim().length!==1) continue;
+      if (++same>=2) return true;
+    }
+    return false;
+  };
+  for (const e of document.querySelectorAll('div,li,span,p,td,th')) {
     if (actions.length + rows.length > 200) break;
     const label=(e.innerText||'').replace(/\s+/g,' ').trim();
-    if (label.length<2 || label.length>40) continue;
+    if (label.length<1 || label.length>40) continue;
     if (e.querySelector('a[href],button,input,select,textarea,[role],[tabindex="0"]')) continue;
     if (!safe(e) || !visible(e)) continue;
-    if (getComputedStyle(e).cursor!=='pointer') continue;
+    const cell=label.length===1;
+    // A one-character cell may be a plain element whose pointer styling lives elsewhere; the cluster
+    // it belongs to is the evidence. Every other row has to say it is clickable itself.
+    if (cell) {
+      if (e.closest('a[href],button,[role="button"]')) continue;
+      if (getComputedStyle(e).cursor!=='pointer' && !clustered(e)) continue;
+    } else if (getComputedStyle(e).cursor!=='pointer') {
+      continue;
+    }
     const node=identity(e);
     if (taken.has(node)) continue;
     const r=e.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2;
-    if (r.width<40 || r.height<16 || x<0 || y<0 || x>=innerWidth || y>=innerHeight) continue;
+    // A cell is small by nature; the bounds keep a whole clickable area that happens to hold one
+    // character out of the table.
+    if (cell) {
+      if (r.width<12 || r.height<12 || r.width>200 || r.height>80 ||
+          x<0 || y<0 || x>=innerWidth || y>=innerHeight) continue;
+    } else if (r.width<40 || r.height<16 || x<0 || y<0 || x>=innerWidth || y>=innerHeight) {
+      continue;
+    }
     // A row is wrapped in several clickable boxes, and a card holds clickable text; keep the
     // outermost box, which is what a person aims at, and drop everything it contains.
     if (rows.some(o => o.rect.x<=r.x+2 && o.rect.y<=r.y+2 &&

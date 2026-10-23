@@ -124,6 +124,39 @@ def main():
         assert value == "Generated", repr(value)
         assert any(a.get("role") == "option" for a in page["actions"])
         passed.append("real text input waits for asynchronous combobox suggestions")
+
+        # A score grid: one-character cells with no role, tabindex or href. A rating control is drawn
+        # exactly like this, and the snapshot used to skip every cell (one character was not a label).
+        browser.evaluate("document.body.innerHTML=" + repr("""
+          <ul class="scores" style="list-style:none;margin:0;padding:0">
+            <li class="row"><span class="who">Ann</span><a href="#ann">Open</a>
+              <div class="cells"><p class="score">?</p><p class="score">1</p><p class="score">2</p>
+                <p class="score">3</p><p class="score">4</p><p class="score">5</p></div></li>
+            <li class="row"><span class="who">Bo</span><a href="#bo">Open</a>
+              <div class="cells"><p class="score">?</p><p class="score">1</p><p class="score">2</p>
+                <p class="score">3</p><p class="score">4</p><p class="score">5</p></div></li>
+          </ul>
+          <p id="prose">Just one line of prose that nobody clicks.</p>
+          <p id="lone">x</p>
+        """))
+        browser.evaluate(
+            "const cells=document.querySelectorAll('.score');"
+            "cells.forEach(p=>{p.style.cssText='display:inline-block;width:48px;height:28px;"
+            "cursor:pointer;text-align:center;margin:0 4px';"
+            "p.addEventListener('click',()=>{window.scored=p.textContent.trim()})});"
+            "document.querySelectorAll('.row').forEach(li=>li.style.cssText="
+            "'display:flex;align-items:center;gap:8px;margin:6px 0');"
+            "document.querySelector('.cells').style.cssText='display:flex'"
+        )
+        page = browser.observe(screenshot=False)
+        scores = [a for a in page["actions"]
+                  if a["kind"] == "click" and a["label"] in {"?", "1", "2", "3", "4", "5"}]
+        assert len(scores) == 12, [a["label"] for a in page["actions"]]
+        browser.act(next(a for a in scores if a["label"] == "4"), page)
+        assert browser.evaluate("window.scored") == "4", browser.evaluate("window.scored")
+        assert not any(a["label"] == "x" for a in page["actions"] + browser.observe(screenshot=False)["actions"])
+        passed.append("a cluster of one-character cells is clickable; a lone character is not")
+
         browser.call("Page.navigate", url="about:blank")
         assert not browser.fresh(page, field)
         passed.append("navigation invalidates the old document")
